@@ -82,13 +82,14 @@ _get_menu_item() {
 # ─────────────────────────────────────────────────
 _draw_menu() {
   local sel="${1:-0}"
-  clear_screen
+  cursor_home
   hide_cursor
   _draw_header
   _draw_divider
   echo
   _draw_menu_items "$sel"
   _draw_footer "$(_menu_count)"
+  clear_to_end
 }
 
 # ─────────────────────────────────────────────────

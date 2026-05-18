@@ -21,6 +21,13 @@ leave_alt_screen() { printf '\033[?1049l'; }
 # Clear screen — works on both normal and alternate buffer
 clear_screen() { printf '\033[2J\033[H'; }
 
+# Fast redraw — move cursor to home without clearing (no flicker)
+# Use this instead of clear_screen when content is being overwritten
+cursor_home() { printf '\033[H'; }
+
+# Clear from cursor to end of screen (for leftover lines)
+clear_to_end() { printf '\033[J'; }
+
 # ─────────────────────────────────────────────────
 # T2: read_key() — Stable key input with vim bindings
 # ─────────────────────────────────────────────────
