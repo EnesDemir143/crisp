@@ -15,8 +15,16 @@ show_cursor() { printf '\033[?25h'; }
 
 # Use alternate screen buffer (like vim/less/htop)
 # This gives a clean screen and restores previous content on exit
-enter_alt_screen() { printf '\033[?1049h\033[H'; }
-leave_alt_screen() { printf '\033[?1049l'; }
+enter_alt_screen() {
+  printf '\033[?1049h\033[H'
+  CRISP_ALT_SCREEN_ACTIVE=1
+}
+leave_alt_screen() {
+  if [[ "${CRISP_ALT_SCREEN_ACTIVE:-0}" == "1" ]]; then
+    printf '\033[?1049l'
+    CRISP_ALT_SCREEN_ACTIVE=0
+  fi
+}
 
 # Clear screen — works on both normal and alternate buffer
 clear_screen() { printf '\033[2J\033[H'; }
@@ -94,31 +102,114 @@ press_any_key() {
 # Pattern: printf '\r\033[2K' (clear line) + echo -e "content" (with colors)
 # \r = cursor to column 0, \033[2K = erase entire line
 
+# Return terminal display width for UTF-8 text.
+#
+# Bash ${#text} is locale-dependent: with LC_ALL=C it counts UTF-8 bytes, so
+# box/block art such as █ and ╗ is over-counted. macOS wc -L is also not a
+# reliable wcwidth implementation for these characters. Prefer Python's Unicode
+# metadata when available, and fall back to Bash length only as a last resort.
+_display_width() {
+  local text="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$text" <<'PY'
+import re
+import sys
+import unicodedata
+
+text = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", sys.argv[1])
+width = 0
+for char in text:
+    if unicodedata.combining(char):
+        continue
+    width += 2 if unicodedata.east_asian_width(char) in ("F", "W") else 1
+print(width)
+PY
+  else
+    printf '%s\n' "${#text}"
+  fi
+}
+
+_max_display_width() {
+  local text="$1" line max=0 width
+  while IFS= read -r line; do
+    width="$(_display_width "$line")"
+    [[ "$width" -gt "$max" ]] && max="$width"
+  done <<< "$text"
+  printf '%s\n' "$max"
+}
+
+_print_cleared_line() {
+  printf '\r\033[2K'
+  printf '%*s' "$1" ''
+  printf '%b%s%b\n' "$2" "$3" "$4"
+}
+
 # Draw the ASCII art header (block characters, centered)
 _draw_header() {
   local w
   w="$(term_width)"
   local title
-  title=$(cat <<'ASCIITITLE'
- ██▀▀█ █▀▀█ █  █ █▀▀█ █▀▀█
- █   █ █  █ █  █ █▄▄▀ █▄▄█
- █▄▄█ ▀▄▄▀ ▀▄▄▀ █  █ █  █
+  case "${CRISP_HEADER_MODE:-big}" in
+    text)
+      title="crisp"
+      ;;
+    *)
+      title=$(cat <<'ASCIITITLE'
+ ██████╗██████╗ ██╗███████╗██████╗
+██╔════╝██╔══██╗██║██╔════╝██╔══██╗
+██║     ██████╔╝██║███████╗██████╔╝
+██║     ██╔══██╗██║╚════██║██╔═══╝
+╚██████╗██║  ██║██║███████║██║
+ ╚═════╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝
 ASCIITITLE
-  )
+      )
+      ;;
+  esac
+
+  local art_w line width max=0
+  local -a line_widths
+  if [[ "${_CRISP_HEADER_CACHE_TITLE:-}" != "$title" ]]; then
+    _CRISP_HEADER_CACHE_TITLE="$title"
+    _CRISP_HEADER_LINE_WIDTHS=()
+    while IFS= read -r line; do
+      width="$(_display_width "$line")"
+      _CRISP_HEADER_LINE_WIDTHS+=("$width")
+      [[ "$width" -gt "$max" ]] && max="$width"
+    done <<< "$title"
+    _CRISP_HEADER_ART_WIDTH="$max"
+  fi
+
+  art_w="${_CRISP_HEADER_ART_WIDTH:-$(_max_display_width "$title")}"
+  line_widths=("${_CRISP_HEADER_LINE_WIDTHS[@]}")
+
+  # If the terminal is too narrow, do not print art that would wrap onto extra
+  # physical lines; wrapped leftovers are the usual source of "duplicate" redraw
+  # artifacts when repainting from cursor_home.
+  if [[ "$w" -le "$((art_w + 2))" ]]; then
+    title="crisp"
+    art_w="$(_display_width "$title")"
+    line_widths=("$art_w")
+  fi
+
+  local pad i=0
   while IFS= read -r line; do
-    local pad=$(( (w - ${#line}) / 2 ))
+    local line_w="${line_widths[$i]:-$(_display_width "$line")}"
+    pad=$(( (w - line_w) / 2 ))
     [[ $pad -lt 0 ]] && pad=0
-    printf '\r\033[2K'
-    printf '%*s' "$pad" ''
-    echo -e "${BCYN}${line}${RST}"
+    _print_cleared_line "$pad" "$BCYN" "$line" "$RST"
+    i=$((i + 1))
   done <<< "$title"
+
   # Tagline shifted 4 chars right from center
-  local stripped_tag="${CRISP_TAGLINE}"
-  local pad=$(( (w - ${#stripped_tag}) / 2 + 4 ))
-  [[ $pad -lt 0 ]] && pad=0
-  printf '\r\033[2K'
-  printf '%*s' "$pad" ''
-  echo -e "${DIM}${CRISP_TAGLINE}${RST}"
+  local tag_w
+  if [[ "${_CRISP_TAGLINE_CACHE_TEXT:-}" != "$CRISP_TAGLINE" ]]; then
+    _CRISP_TAGLINE_CACHE_TEXT="$CRISP_TAGLINE"
+    _CRISP_TAGLINE_CACHE_WIDTH="$(_display_width "$CRISP_TAGLINE")"
+  fi
+  tag_w="${_CRISP_TAGLINE_CACHE_WIDTH:-$(_display_width "$CRISP_TAGLINE")}"
+  local tpad=$(( (w - tag_w) / 2 + 4 ))
+  [[ $tpad -lt 0 ]] && tpad=0
+  _print_cleared_line "$tpad" "$DIM" "$CRISP_TAGLINE" "$RST"
   printf '\r\033[2K\n'
 }
 
@@ -157,15 +248,21 @@ _draw_menu_items() {
     if [[ $i -eq $sel ]]; then
       printf '\r\033[2K'
       echo -e "  ${BCYN}${ICO_ARROW} ${num}. ${title}${RST}"
-      printf '\r\033[2K'
-      echo -e "     ${DIM}${desc}${RST}"
+      if [[ "${CRISP_MENU_SHOW_DESCRIPTIONS:-1}" == "1" ]]; then
+        printf '\r\033[2K'
+        echo -e "     ${DIM}${desc}${RST}"
+      fi
     else
       printf '\r\033[2K'
       echo -e "  ${DIM}  ${num}.${RST} ${title}"
-      printf '\r\033[2K'
-      echo -e "     ${DIM}${desc}${RST}"
+      if [[ "${CRISP_MENU_SHOW_DESCRIPTIONS:-1}" == "1" ]]; then
+        printf '\r\033[2K'
+        echo -e "     ${DIM}${desc}${RST}"
+      fi
     fi
-    printf '\r\033[2K\n'
+    if [[ "${CRISP_MENU_SHOW_DESCRIPTIONS:-1}" == "1" ]]; then
+      printf '\r\033[2K\n'
+    fi
   done
 }
 

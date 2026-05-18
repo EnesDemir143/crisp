@@ -3,7 +3,7 @@
 **Keep everything crisp and up-to-date.**
 
 A cross-platform CLI tool that updates all your dev tools in one command.
-Beyond brew/pip/npm — crisp also tracks GitHub-starred repos and keeps them current.
+Beyond brew/pip/npm — crisp can also update local Git repositories you choose to track.
 
 ## Quick Start
 
@@ -60,7 +60,7 @@ crisp --help           # show help
 | `cargo` | `cargo install-update -a` | All |
 | `hermes` | Hermes Agent update | All |
 | `code` | VS Code extensions update | All |
-| `repos` | Git pull on starred repos | All |
+| `repos` | Fast-forward pull local tracked repos | All |
 | `graphify` | graphify version check | All |
 
 ## Configuration

@@ -82,6 +82,27 @@ _get_menu_item() {
 # ─────────────────────────────────────────────────
 _draw_menu() {
   local sel="${1:-0}"
+  local h n
+  h="$(term_height)"
+  n="$(_menu_count)"
+
+  # Keep the complete redraw inside the visible alternate screen. If the render
+  # is taller than the terminal, the terminal scrolls; then cursor_home no
+  # longer returns to the original top and old menu rows look duplicated.
+  if [[ "$h" -ge $((8 + 2 + (n * 3) + 6)) ]]; then
+    CRISP_HEADER_MODE=big
+    CRISP_MENU_SHOW_DESCRIPTIONS=1
+  elif [[ "$h" -ge $((8 + 2 + n + 6)) ]]; then
+    CRISP_HEADER_MODE=big
+    CRISP_MENU_SHOW_DESCRIPTIONS=0
+  elif [[ "$h" -ge $((3 + 2 + (n * 3) + 6)) ]]; then
+    CRISP_HEADER_MODE=text
+    CRISP_MENU_SHOW_DESCRIPTIONS=1
+  else
+    CRISP_HEADER_MODE=text
+    CRISP_MENU_SHOW_DESCRIPTIONS=0
+  fi
+
   cursor_home
   hide_cursor
   _draw_header

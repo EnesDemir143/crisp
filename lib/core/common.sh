@@ -35,7 +35,7 @@ _module_desc() {
     npx)      echo "clear npx cache" ;;
     uv)       echo "uv self update + uv tool upgrade --all" ;;
     hermes)   echo "hermes agent update" ;;
-    repos)    echo "git pull on all local cloned repos" ;;
+    repos)    echo "fast-forward pull tracked local repos" ;;
     code)     echo "VS Code extensions update" ;;
     cargo)    echo "cargo installed tools" ;;
     *)        echo "custom module" ;;

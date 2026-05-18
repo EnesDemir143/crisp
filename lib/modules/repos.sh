@@ -1,25 +1,20 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # crisp module: repos
-# Git pull on all starred repos cloned locally
+# Fast-forward update for local Git repositories only.
 
 [[ -n "${CRISP_MOD_REPOS_LOADED:-}" ]] && return 0
 readonly CRISP_MOD_REPOS_LOADED=1
 
-
-CRISP_STARRED_FILE="${CRISP_DATA_HOME:-$HOME/.local/share/crisp}/starred_repos"
-CRISP_REPO_CACHE="${CRISP_CACHE_HOME:-$HOME/.cache/crisp}/local_repos"
-
-crisp_repos_fetch_stars() {
-  if ! command -v gh &>/dev/null; then
-    return 1
-  fi
-  gh api user/starred --paginate --jq '.[].full_name' 2>/dev/null | sort -u > "$CRISP_STARRED_FILE"
-}
+CRISP_REPOS_CONF="${CRISP_REPOS_CONF:-${CRISP_CONFIG_HOME:-$HOME/.config/crisp}/repos.conf}"
+CRISP_REPO_CACHE="${CRISP_REPO_CACHE:-${CRISP_CACHE_HOME:-$HOME/.cache/crisp}/local_repos}"
 
 crisp_repos_scan_local() {
-  # One comprehensive scan of all local git repos with their remotes
-  # Cached for 1 hour
-  find ~ -maxdepth 6 -type d -name ".git" \
+  mkdir -p "$(dirname "$CRISP_REPO_CACHE")"
+
+  # One comprehensive scan of local git repos. crisp only works from
+  # repositories present on this machine; it does not fetch any account-level
+  # GitHub lists.
+  find "${CRISP_REPOS_SCAN_ROOT:-$HOME}" -maxdepth "${CRISP_REPOS_SCAN_DEPTH:-6}" -type d -name ".git" \
     -not -path "*/node_modules/*" \
     -not -path "*/.Trash/*" \
     -not -path "*/.cache/*" \
@@ -33,102 +28,95 @@ crisp_repos_scan_local() {
     -not -path "*/.vim/*" \
     -not -path "*/.hermes/hermes-agent/*" \
     -not -path "*/go/pkg/*" \
-    2>/dev/null | while read -r d; do
-    dir=$(dirname "$d")
-    remote=$(cd "$dir" 2>/dev/null && git remote get-url origin 2>/dev/null)
-    if [ -n "$remote" ]; then
-      echo "$remote ||| $dir"
-    fi
-  done 2>/dev/null > "$CRISP_REPO_CACHE"
+    2>/dev/null | while IFS= read -r d; do
+      dirname "$d"
+    done | sort -u > "$CRISP_REPO_CACHE"
+}
+
+crisp_repos_list_configured() {
+  if [[ -f "$CRISP_REPOS_CONF" ]]; then
+    sed -n 's/^track:[[:space:]]*//p' "$CRISP_REPOS_CONF" | while IFS= read -r repo; do
+      [[ -n "$repo" ]] && printf '%s\n' "${repo/#\~/$HOME}"
+    done
+    return 0
+  fi
+
+  return 0
+}
+
+crisp_repos_update_one() {
+  local repo="$1"
+  [[ -d "$repo/.git" ]] || return 2
+
+  local branch status upstream output
+  branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD 2>/dev/null) || {
+    echo "      ⚠ detached HEAD, skipped"
+    return 3
+  }
+
+  status=$(git -C "$repo" status --porcelain 2>/dev/null)
+  if [[ -n "$status" ]]; then
+    echo "      ⚠ dirty working tree, skipped"
+    return 3
+  fi
+
+  upstream=$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null) || {
+    echo "      ⚠ no upstream for ${branch}, skipped"
+    return 3
+  }
+
+  output=$(git -C "$repo" pull --ff-only 2>&1)
+  if grep -q "Already up to date" <<< "$output"; then
+    echo "      ✓ up to date (${upstream})"
+    return 0
+  fi
+
+  if grep -q "Fast-forward\|Updating" <<< "$output"; then
+    local summary
+    summary=$(head -3 <<< "$output" | tr '\n' ' ')
+    echo "      ⬆  ${summary:0:100}"
+    return 1
+  fi
+
+  local err_line
+  err_line=$(head -1 <<< "$output")
+  echo "      ⚠  ${err_line:0:80}"
+  return 4
 }
 
 crisp_repos_run() {
-  if ! command -v gh &>/dev/null; then
-    echo "  → gh CLI not found, star scan skipped"
-    return
+  if ! command -v git &>/dev/null; then
+    echo "  → git not found, skipping repos"
+    return 0
   fi
 
-  # Refresh stars if cache missing or older than 1 day
-  if [ ! -f "$CRISP_STARRED_FILE" ] || [ -z "$(cat "$CRISP_STARRED_FILE" 2>/dev/null)" ]; then
-    echo "  → Fetching star list from GitHub..."
-    crisp_repos_fetch_stars
+  local repos=()
+  while IFS= read -r repo; do
+    [[ -n "$repo" ]] && repos+=("$repo")
+  done < <(crisp_repos_list_configured)
+
+  if [[ "${#repos[@]}" -eq 0 ]]; then
+    echo "  → No tracked repos configured"
+    echo "    Add entries to ${CRISP_REPOS_CONF/#$HOME/~}:"
+    echo "    track: ~/path/to/repo"
+    return 0
   fi
 
-  if [ ! -f "$CRISP_STARRED_FILE" ] || [ ! -s "$CRISP_STARRED_FILE" ]; then
-    echo "  → Star list empty, skipping"
-    return
-  fi
+  echo "  → ${#repos[@]} tracked repos configured"
 
-  # Scan local repos (cache valid for 1 hour)
-  if [[ ! -f "$CRISP_REPO_CACHE" ]] || [[ -n $(find "$CRISP_REPO_CACHE" -mmin +60 -print 2>/dev/null) ]]; then
-    echo "  → Scanning local repos..."
-    crisp_repos_scan_local
-  fi
+  local updated=0 current=0 skipped=0 failed=0 result repo name
+  for repo in "${repos[@]}"; do
+    name="${repo/#$HOME/~}"
+    echo "    📂 ${name}"
+    crisp_repos_update_one "$repo"
+    result=$?
+    case "$result" in
+      0) current=$((current + 1)) ;;
+      1) updated=$((updated + 1)) ;;
+      2|3) skipped=$((skipped + 1)) ;;
+      *) failed=$((failed + 1)) ;;
+    esac
+  done
 
-  local star_count
-  star_count=$(wc -l < "$CRISP_STARRED_FILE")
-  echo "  → ${star_count} stars being scanned..."
-
-  local updated=0 current=0 failed=0
-
-  # For each star, check if we have it locally
-  while IFS= read -r star; do
-    [ -z "$star" ] && continue
-    local star_lower
-    star_lower=$(echo "$star" | tr '[:upper:]' '[:lower:]')
-    local star_name
-    star_name="${star_lower#*/}"
-
-    # Search local repo cache for this star
-    local match_path=""
-    while IFS= read -r line; do
-      local remote="${line% ||| *}"
-      local local_path="${line#* ||| }"
-
-      # Normalize remote
-      local remote_norm=""
-      if echo "$remote" | grep -q "github.com"; then
-        if echo "$remote" | grep -q "://"; then
-          remote_norm=$(echo "$remote" | sed 's/.*github.com\///i' | sed 's/\.git$//' | tr '[:upper:]' '[:lower:]')
-        elif echo "$remote" | grep -q "git@"; then
-          remote_norm=$(echo "$remote" | sed 's/.*github.com://i' | sed 's/\.git$//' | tr '[:upper:]' '[:lower:]')
-        fi
-      fi
-
-      if [ "$remote_norm" = "$star_lower" ]; then
-        match_path="$local_path"
-        break
-      fi
-
-      # Also check if same repo name (fork match)
-      local remote_name="${remote_norm#*/}"
-      if [ "$remote_name" = "$star_name" ] && [ -n "$remote_name" ]; then
-        match_path="$local_path"
-        break
-      fi
-    done < "$CRISP_REPO_CACHE"
-
-    [ -z "$match_path" ] && continue
-
-    echo "    📂 ${star}"
-    local output
-    output=$(cd "$match_path" 2>/dev/null && git pull --ff-only 2>&1)
-
-    if echo "$output" | grep -q "Already up to date"; then
-      echo "      ✓ up to date"
-      current=$((current + 1))
-    elif echo "$output" | grep -q "Fast-forward\|Updating"; then
-      local summary
-      summary=$(echo "$output" | head -3 | tr '\n' ' ')
-      echo "      ⬆  ${summary:0:100}"
-      updated=$((updated + 1))
-    else
-      local err_line
-      err_line=$(echo "$output" | head -1)
-      echo "      ⚠  ${err_line:0:80}"
-      failed=$((failed + 1))
-    fi
-  done < "$CRISP_STARRED_FILE"
-
-  echo "    ✓ ${updated} repos updated, ${current} already up to date, ${failed} failed"
+  echo "    ✓ ${updated} repos updated, ${current} already up to date, ${skipped} skipped, ${failed} failed"
 }
