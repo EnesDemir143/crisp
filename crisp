@@ -48,6 +48,7 @@ fi
 # Cleanup trap
 # ─────────────────────────────────────────────────
 cleanup() {
+  leave_alt_screen
   show_cursor
   printf '\n'
   exit 0
@@ -306,6 +307,10 @@ _interactive_menu() {
     exit 1
   fi
 
+  # Enter alternate screen buffer (clean slate, restores on exit)
+  enter_alt_screen
+  hide_cursor
+
   local n sel=0 key id
   n="$(_menu_count)"
   _draw_menu "$sel"
@@ -329,7 +334,7 @@ _interactive_menu() {
       VERSION) _show_version_screen; _draw_menu "$sel" ;;
       HELP)    show_cursor; _show_help_screen; hide_cursor; _draw_menu "$sel" ;;
       QUIT|ESC)
-        clear_screen; show_cursor
+        leave_alt_screen; show_cursor
         echo; echo -e "  ${DIM}crisp — see you soon!${RST}"; echo
         exit 0 ;;
     esac

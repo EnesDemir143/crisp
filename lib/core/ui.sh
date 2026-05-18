@@ -12,6 +12,13 @@ readonly CRISP_UI_LOADED=1
 # ─────────────────────────────────────────────────
 hide_cursor() { printf '\033[?25l'; }
 show_cursor() { printf '\033[?25h'; }
+
+# Use alternate screen buffer (like vim/less/htop)
+# This gives a clean screen and restores previous content on exit
+enter_alt_screen() { printf '\033[?1049h\033[H'; }
+leave_alt_screen() { printf '\033[?1049l'; }
+
+# Clear screen — works on both normal and alternate buffer
 clear_screen() { printf '\033[2J\033[H'; }
 
 # ─────────────────────────────────────────────────
@@ -84,9 +91,12 @@ _draw_header() {
   w="$(term_width)"
   local title
   title=$(cat <<'ASCIITITLE'
- ██▀▀█ █▀▀█ █  █ █▀▀█ █▀▀█
- █   █ █  █ █  █ █▄▄▀ █▄▄█
- █▄▄█ ▀▄▄▀ ▀▄▄▀ █  █ █  █
+   ██████╗██████╗ ██╗███████╗██████╗ 
+  ██╔════╝██╔══██╗██║██╔════╝██╔══██╗
+  ██║     ██████╔╝██║███████╗██████╔╝
+  ██║     ██╔══██╗██║╚════██║██╔═══╝ 
+  ╚██████╗██║  ██║██║███████║██║     
+   ╚═════╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     
 ASCIITITLE
   )
   while IFS= read -r line; do
