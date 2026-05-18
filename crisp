@@ -18,7 +18,17 @@ fi
 # ─────────────────────────────────────────────────
 # Source core libraries (base → ui → common)
 # ─────────────────────────────────────────────────
-CRISP_DIR="${CRISP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+# Resolve symlinks to find the real script directory
+_real_script_dir() {
+  local src="${BASH_SOURCE[0]}"
+  while [[ -L "$src" ]]; do
+    local dir; dir="$(cd "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  cd "$(dirname "$src")" && pwd
+}
+CRISP_DIR="${CRISP_DIR:-$(_real_script_dir)}"
 source "$CRISP_DIR/lib/core/base.sh"
 source "$CRISP_DIR/lib/core/ui.sh"
 source "$CRISP_DIR/lib/core/common.sh"
