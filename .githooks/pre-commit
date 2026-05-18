@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# crisp pre-commit hook
+# Runs ShellCheck, shfmt, and Bats before allowing commit
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# 1. ShellCheck
+if command -v shellcheck &>/dev/null; then
+  echo "  → ShellCheck..."
+  shellcheck -x lib/core/*.sh lib/modules/*.sh crisp 2>&1 || {
+    echo "  ✗ ShellCheck failed — fix errors before committing"
+    exit 1
+  }
+  echo "  ✓ ShellCheck passed"
+else
+  echo "  ⚠ shellcheck not found, skipping"
+fi
+
+# 2. shfmt (formatting check)
+if command -v shfmt &>/dev/null; then
+  echo "  → shfmt..."
+  shfmt -d -i 2 -ci lib/core/*.sh lib/modules/*.sh crisp 2>&1 || {
+    echo "  ✗ shfmt failed — run 'shfmt -w -i 2 -ci .' to fix"
+    exit 1
+  }
+  echo "  ✓ shfmt passed"
+else
+  echo "  ⚠ shfmt not found, skipping"
+fi
+
+# 3. Bats (if tests exist)
+if command -v bats &>/dev/null && [ -d tests/ ]; then
+  echo "  → Bats tests..."
+  bats tests/ 2>&1 || {
+    echo "  ✗ Bats tests failed"
+    exit 1
+  }
+  echo "  ✓ Bats passed"
+else
+  echo "  ⚠ bats not found or no tests/, skipping"
+fi
+
+echo "✓ All pre-commit checks passed"

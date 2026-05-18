@@ -1,0 +1,21 @@
+# crisp — ShellCheck configuration
+enable=all
+
+# Sourced library variables (false positives)
+disable=SC2034   # Unused variables
+disable=SC2154   # Referenced but not assigned
+disable=SC2155   # Declare and assign separately
+
+# Style preferences (not errors)
+disable=SC2250   # Prefer braces around variables
+disable=SC2292   # Prefer [[ ]] over [ ]
+disable=SC2312   # Consider invoking command separately
+disable=SC2249   # Consider adding default case
+disable=SC2059   # Don't use variables in printf format
+disable=SC2248   # Prefer double quoting
+disable=SC2181   # Check exit code directly
+
+# Source following
+disable=SC1090   # Can't follow non-constant source
+disable=SC1091   # Can't follow sourced file
+external-sources=true
