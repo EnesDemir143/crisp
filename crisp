@@ -1,852 +1,386 @@
 #!/usr/bin/env bash
-# ┌──────────────────────────────────────────────────────────┐
-# │  crisp  — keep everything up-to-date, elegantly         │
-# │  v1.0.0                                                 │
-# └──────────────────────────────────────────────────────────┘
-#
-# Usage:  crisp                  → interactive menu
-#         crisp all              → run all modules
-#         crisp <module>         → run specific module
-#         crisp cron             → schedule auto-update
-#         crisp --help           → show help
-#         crisp --version        → show version
+# crisp — keep everything up-to-date, elegantly
+# v1.0.0
+# Usage: crisp → interactive menu | crisp all → run all | crisp <module> → specific
 
-# ---- strict mode ----------------------------------------------------------
 set -o pipefail
-# NOTE: no set -e — we handle errors per-module gracefully
 
-# ---- paths ----------------------------------------------------------------
-CRISP_DIR="${CRISP_DIR:-$HOME/Documents/crisp}"
-CRISP_CONF="$CRISP_DIR/crisp.conf"
-CRISP_MODULES_DIR="$CRISP_DIR/modules"
+# ─────────────────────────────────────────────────
+# Bash version enforcement (must be FIRST)
+# ─────────────────────────────────────────────────
+if [[ "${BASH_VERSINFO[0]}" -lt 5 ]]; then
+  printf '\033[1;31m✗ crisp requires bash 5.0+\033[0m\n'
+  printf '  Current version: %s\n' "$BASH_VERSION"
+  printf '  Install: brew install bash\n'
+  exit 1
+fi
+
+# ─────────────────────────────────────────────────
+# Source core libraries (base → ui → common)
+# ─────────────────────────────────────────────────
+CRISP_DIR="${CRISP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+source "$CRISP_DIR/lib/core/base.sh"
+source "$CRISP_DIR/lib/core/ui.sh"
+source "$CRISP_DIR/lib/core/common.sh"
+
+# Project constants
 CRISP_VERSION="1.0.0"
 CRISP_TAGLINE="Keep everything crisp and up-to-date"
 
-# ---- load config ----------------------------------------------------------
-if [ -f "$CRISP_CONF" ]; then
+# Load config
+if [[ -f "$CRISP_CONF" ]]; then
   source "$CRISP_CONF"
 else
   CRISP_MODULES="graphify brew pip npm"
 fi
 
-# ---- colors (modern palette) -----------------------------------------------
-RST='\033[0m';    BOLD='\033[1m';   DIM='\033[2m';     ITAL='\033[3m'
-UNDER='\033[4m';  BLINK='\033[5m'; REV='\033[7m'
-# Regular
-BLK='\033[0;30m'; RED='\033[0;31m'; GRN='\033[0;32m'; YEL='\033[0;33m'
-BLU='\033[0;34m'; MAG='\033[0;35m'; CYN='\033[0;36m'; WHT='\033[0;37m'
-# Bright
-BBLK='\033[1;90m'; BRED='\033[1;91m'; BGRN='\033[1;92m'; BYEL='\033[1;93m'
-BBLU='\033[1;94m'; BMAG='\033[1;95m'; BCYN='\033[1;96m'; BWHT='\033[1;97m'
-# Backgrounds
-BG_BLK='\033[40m'; BG_RED='\033[41m'; BG_GRN='\033[42m'; BG_YEL='\033[43m'
-BG_BLU='\033[44m'; BG_MAG='\033[45m'; BG_CYN='\033[46m'; BG_WHT='\033[47m'
-
-# ---- terminal helpers ------------------------------------------------------
-term_width()  { tput cols 2>/dev/null || echo 80; }
-term_height() { tput lines 2>/dev/null || echo 24; }
-hide_cursor() { printf '\033[?25l'; }
-show_cursor() { printf '\033[?25h'; }
-cursor_to()   { printf '\033[%d;%dH' "$1" "$2"; }
-clear_screen() { printf '\033[2J\033[H'; }
-clear_line()  { printf '\033[2K'; }
-cursor_up()   { printf '\033[%dA' "${1:-1}"; }
-cursor_down() { printf '\033[%dB' "${1:-1}"; }
-
-# ---- trap setup ------------------------------------------------------------
+# ─────────────────────────────────────────────────
+# Cleanup trap
+# ─────────────────────────────────────────────────
 cleanup() {
   show_cursor
-  printf '\n\n'
+  printf '\n'
   exit 0
 }
 trap cleanup EXIT INT TERM
 
-# ---- helpers ---------------------------------------------------------------
-_module_path()  { echo "$CRISP_MODULES_DIR/$1.sh"; }
-_module_count() { echo "$CRISP_MODULES" | wc -w | tr -d ' '; }
-
-_module_desc() {
-  case "$1" in
-    graphify) echo "Update graphify (knowledge graph + version)" ;;
-    brew)     echo "brew update + brew upgrade" ;;
-    pip)      echo "pip self-upgrade + outdated packages" ;;
-    pipx)     echo "pipx upgrade-all (marker-pdf, pytest, etc.)" ;;
-    npm)      echo "npm global packages" ;;
-    npx)      echo "clear npx cache (stale packages)" ;;
-    uv)       echo "uv self update + uv tool upgrade --all" ;;
-    hermes)   echo "hermes agent update" ;;
-    repos)    echo "git pull on all starred+cloned repos" ;;
-    code)     echo "VS Code extensions update" ;;
-    cargo)    echo "cargo installed tools" ;;
-    stars)    echo "Generate STARRED_REPOS.md from GitHub stars" ;;
-    scan)     echo "Deep scan: read READMEs, detect installs" ;;
-    *)        echo "custom module" ;;
-  esac
-}
-
-# ---- run a single module ---------------------------------------------------
-_run_module() {
-  local name="$1" silent="${2:-false}"
-  local path; path="$(_module_path "$name")"
-
-  if [ ! -f "$path" ]; then
-    [[ "$silent" != "true" ]] && echo -e "  ${RED}✗ Module '${name}' not found${RST}"
-    return 1
-  fi
-
-  source "$path"
-
-  if declare -F "crisp_${name}_run" >/dev/null 2>&1; then
-    [[ "$silent" != "true" ]] && echo -e "  ${CYN}[${name}]${RST}"
-    if "crisp_${name}_run"; then
-      [[ "$silent" != "true" ]] && echo -e "    ${GRN}✓ done${RST}"
-      return 0
-    else
-      [[ "$silent" != "true" ]] && echo -e "    ${YEL}⚠ completed with warnings${RST}"
-      return 0  # don't fail on module errors
-    fi
-  else
-    [[ "$silent" != "true" ]] && echo -e "  ${RED}✗ No run function for '${name}'${RST}"
-    return 1
-  fi
-}
-
-# ---- run all modules -------------------------------------------------------
-_run_all_modules() {
-  clear_screen
-  echo
-  echo -e "  ${BOLD}${BCYN}crisp${RST} ${BOLD}— starting updates...${RST} ${DIM}$(date '+%H:%M')${RST}"
-  echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"
-  echo
-
-  local start_time; start_time=$(date +%s)
-  local ran=0 failed=0
-  local total; total=$(_module_count)
-
-  for m in $CRISP_MODULES; do
-    local path="$(_module_path "$m")"
-    if [ -f "$path" ]; then
-      if _run_module "$m"; then
-        ran=$((ran + 1))
-      else
-        failed=$((failed + 1))
-      fi
-    fi
-  done
-
-  local end_time elapsed
-  end_time=$(date +%s)
-  elapsed=$((end_time - start_time))
-
-  echo
-  echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"
-  if [ $failed -eq 0 ]; then
-    echo -e "  ${BGRN}${BLK} ✓ crisp done ${RST} — ${ran}/${total} modules, ${elapsed}s"
-  else
-    echo -e "  ${BYEL}${BLK} ⚠ crisp done ${RST} — ${ran} ok, ${failed} warning, ${elapsed}s"
-  fi
-  echo
-}
-
-# ---- ascii art title -------------------------------------------------------
-_draw_ascii_title() {
-  local w; w=$(term_width)
-  local accent="${BCYN}" title
-
-  # crisp ASCII art — sleek, bold
-  title=$(cat <<'ASCIITITLE'
-   ██████╗██████╗ ██╗███████╗██████╗ 
-  ██╔════╝██╔══██╗██║██╔════╝██╔══██╗
-  ██║     ██████╔╝██║███████╗██████╔╝
-  ██║     ██╔══██╗██║╚════██║██╔═══╝ 
-  ╚██████╗██║  ██║██║███████║██║     
-   ╚═════╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     
-ASCIITITLE
-  )
-
-  # center the ascii art
-  while IFS= read -r line; do
-    local line_len=${#line}
-    local pad=$(( (w - line_len) / 2 ))
-    [[ $pad -lt 0 ]] && pad=0
-    printf "%${pad}s" ""
-    echo -e "${accent}${line}${RST}"
-  done <<< "$title"
-
-  # tagline
-  local tagline="   ${DIM}${CRISP_TAGLINE}${RST}  "
-  local tag_len=${#tagline}
-  local pad=$(( (w - tag_len) / 2 + 4 ))
-  [[ $pad -lt 0 ]] && pad=0
-  printf "%${pad}s" ""
-  echo -e "${tagline}"
-  echo
-}
-
-# ---- menu data -------------------------------------------------------------
+# ─────────────────────────────────────────────────
+# Menu data
+# ─────────────────────────────────────────────────
 MENU_ITEMS=(
   "all:Run All Updates:Run all modules sequentially"
   "quick:Quick Update (brew/pip/npm):Update core package managers only"
-  "stars:Generate Star Report:Generate STARRED_REPOS.md from GitHub stars"
+  "repos:Local Repo Status:Check git status of local repositories"
   "cron:Schedule Auto-Update:Schedule recurring auto-updates"
   "config:Configure Modules:Choose which modules to run"
   "help:Help & About:Help and version info"
 )
-
 _menu_count() { echo "${#MENU_ITEMS[@]}"; }
-
 _get_menu_item() {
-  local idx=$1 field=$2
-  local item="${MENU_ITEMS[$idx]}"
-  case $field in
+  local i=$1 f=$2
+  local item="${MENU_ITEMS[$i]}"
+  case $f in
     id)    echo "$item" | cut -d: -f1 ;;
     title) echo "$item" | cut -d: -f2 ;;
     desc)  echo "$item" | cut -d: -f3 ;;
   esac
 }
 
-# ---- draw interactive menu -------------------------------------------------
-# Line where menu area starts (after ASCII art + divider)
-MENU_TOP_LINE=0
-# Number of lines in the menu area (items + footer)
-MENU_AREA_LINES=0
-
-# Draw header once (ASCII art + divider). Returns the starting line for menu items.
-_draw_header() {
+# ─────────────────────────────────────────────────
+# Full-redraw menu (Mole-style)
+# ─────────────────────────────────────────────────
+_draw_menu() {
+  local sel="${1:-0}"
   clear_screen
   hide_cursor
-
-  local w; w=$(term_width)
-
-  # ASCII title (10 lines + tagline + blank = 12 lines)
-  _draw_ascii_title
-
-  # menu divider
-  local divider; divider=$(printf '─%.0s' $(seq 1 $w))
-  echo -e "  ${DIM}${divider:0:$((w-4))}${RST}"
+  _draw_header
+  _draw_divider
   echo
-
-  # Menu items start at line 15 (12 header + 1 divider + 1 blank)
-  MENU_TOP_LINE=15
+  _draw_menu_items "$sel"
+  _draw_footer "$(_menu_count)"
 }
 
-# Draw the menu area (items + footer) at current cursor position.
-# $1 = selected index (0-based)
-_draw_menu_area() {
-  local sel=$1
-  local n; n=$(_menu_count)
-  local w; w=$(term_width)
+# ─────────────────────────────────────────────────
+# Sub-screens
+# ─────────────────────────────────────────────────
+_show_help_screen() {
+  clear_screen
+  _draw_header
+  _draw_divider
+  section_header "USAGE"
+  echo -e "    ${CYN}crisp${RST}                     interactive menu"
+  echo -e "    ${CYN}crisp all${RST}                 run all enabled modules"
+  echo -e "    ${CYN}crisp quick${RST}               quick update (brew/pip/npm)"
+  echo -e "    ${CYN}crisp <module>${RST}            run a specific module"
+  echo -e "    ${CYN}crisp cron${RST}                schedule auto-update"
+  echo -e "    ${CYN}crisp list${RST}                list modules"
+  echo -e "    ${CYN}crisp --dry-run${RST}           preview without changes"
+  section_header "KEYBOARD SHORTCUTS"
+  echo -e "    ${CYN}↑/↓ or j/k${RST}    navigate menu"
+  echo -e "    ${CYN}Enter${RST}          select highlighted item"
+  echo -e "    ${CYN}1-$(_menu_count)${RST}          quick select item by number"
+  echo -e "    ${CYN}g${RST}              jump to top"
+  echo -e "    ${CYN}v / h / q${RST}      version / help / quit"
+  section_header "FILES"
+  kv_label "config" "$CRISP_CONF"
+  kv_label "modules" "$CRISP_MODULES_DIR"
+  kv_label "data" "$CRISP_DATA_HOME"
+  echo
+  press_any_key 5
+}
 
-  # draw each item
-  for ((i=0; i<n; i++)); do
-    local num=$((i+1))
-    local title="$(_get_menu_item $i title)"
-    local desc="$(_get_menu_item $i desc)"
-
-    if [ $i -eq $sel ]; then
-      echo -e "  ${BCYN}▶ ${num}. ${title}${RST}"
-      echo -e "     ${DIM}${desc}${RST}"
+_show_version_screen() {
+  clear_screen
+  _draw_header
+  _draw_divider
+  echo
+  kv_label "Version" "crisp v${CRISP_VERSION}"
+  kv_label "Tagline" "$CRISP_TAGLINE"
+  kv_label "OS" "$CRISP_OS"
+  kv_label "Bash" "$BASH_VERSION"
+  kv_label "Config" "$CRISP_CONF"
+  kv_label "Modules" "$CRISP_MODULES_DIR"
+  kv_label "Data" "$CRISP_DATA_HOME"
+  echo
+  local count; count="$(_module_count)"
+  section_header "Active modules (${count})"
+  for m in $CRISP_MODULES; do
+    if [[ -f "$(_module_path "$m")" ]]; then
+      echo -e "    ${GRN}${ICO_DOT_FILLED}${RST} ${CYN}${m}${RST} ${DIM}— $(_module_desc "$m")${RST}"
     else
-      echo -e "  ${DIM}  ${num}.${RST} ${title}"
-      echo -e "     ${DIM}${desc}${RST}"
+      echo -e "    ${YEL}${ICO_DOT_EMPTY}${RST} ${CYN}${m}${RST} ${DIM}— $(_module_desc "$m") ${YEL}(file missing)${RST}"
     fi
-    echo
   done
-
-  # bottom guide
-  local divider; divider=$(printf '─%.0s' $(seq 1 $w))
-  echo -e "  ${DIM}${divider:0:$((w-4))}${RST}"
   echo
-  echo -e "  ${DIM}↑/↓ or j/k: navigate  │  Enter: select  │  1-${n}: quick select${RST}"
-  echo -e "  ${DIM}v: version           │  h: help     │  q: quit${RST}"
+  press_any_key 5
+}
+
+_show_config_screen() {
+  clear_screen
+  section_header "${BCYN}crisp config${RST} — module configuration"
+  _draw_divider
+  kv_label "Config file" "$CRISP_CONF"
   echo
-  echo -e "  ${DIM}v${CRISP_VERSION}  •  ${CRISP_MODULES_DIR}${RST}"
-
-  # Calculate menu area height: n items * 3 lines + 5 footer lines
-  MENU_AREA_LINES=$((n * 3 + 5))
+  section_header "Active modules"
+  for m in $CRISP_MODULES; do
+    local desc; desc="$(_module_desc "$m")"
+    if [[ -f "$(_module_path "$m")" ]]; then
+      echo -e "    ${GRN}${ICO_DOT_FILLED}${RST} ${CYN}${m}${RST} ${DIM}— ${desc}${RST}"
+    else
+      echo -e "    ${YEL}${ICO_DOT_EMPTY}${RST} ${CYN}${m}${RST} ${DIM}— ${desc} ${YEL}(file missing)${RST}"
+    fi
+  done
+  echo
+  section_header "All available modules"
+  for m in $(_all_available_modules); do
+    local desc; desc="$(_module_desc "$m")"
+    if echo "$CRISP_MODULES" | grep -qw "$m"; then
+      echo -e "    ${GRN}${ICO_CHECK}${RST} ${CYN}${m}${RST} ${DIM}— ${desc}${RST}"
+    else
+      echo -e "    ${DIM}${ICO_DOT_EMPTY} ${m} — ${desc}${RST}"
+    fi
+  done
+  echo
+  echo -e "  ${DIM}To edit: add/remove module names in ${CRISP_CONF}${RST}"
+  echo
+  press_any_key 5
 }
 
-# Move cursor back to MENU_TOP_LINE and clear from there down
-_back_to_menu() {
-  printf '\033[%d;1H' "$MENU_TOP_LINE"
-  printf '\033[J'  # clear from cursor to end of screen
-}
-
-# ---- interactive input handler ---------------------------------------------
-read_key() {
-  local key
-  IFS= read -r -s -n 1 key
-  local status=$?
-  if [ $status -ne 0 ]; then
-    echo "QUIT"
-    return
-  fi
-
-  case "$key" in
-    $'\x1b')  # ESC sequence
-      local b1
-      # Read next byte with generous timeout (bash needs time for multi-byte sequences)
-      IFS= read -r -s -n 1 -t 0.5 b1
-      if [ -z "$b1" ]; then
-        echo "ESC"
-        return
-      fi
-      case "$b1" in
-        '['|O)  # CSI or SS3 sequence
-          local b2
-          IFS= read -r -s -n 1 -t 0.5 b2
-          case "$b2" in
-            A) echo "UP" ;;
-            B) echo "DOWN" ;;
-            C) echo "RIGHT" ;;
-            D) echo "LEFT" ;;
-            H) echo "HOME" ;;
-            F) echo "END" ;;
-            [0-9])  # extended sequence like [3~ (delete), [5~ (pgup)
-              local b3
-              IFS= read -r -s -n 1 -t 0.3 b3
-              case "$b2$b3" in
-                3~) echo "DELETE" ;;
-                5~) echo "PGUP" ;;
-                6~) echo "PGDN" ;;
-                *)   echo "ESC" ;;
-              esac
-              ;;
-            *) echo "ESC" ;;
-          esac
-          ;;
-        *) echo "ESC" ;;
-      esac
-      ;;
-    '') echo "ENTER" ;;
-    $'\x7f'|$'\x08') echo "BACKSPACE" ;;
-    q|Q) echo "QUIT" ;;
-    v|V) echo "VERSION" ;;
-    h|H) echo "HELP" ;;
-    j|J) echo "DOWN" ;;
-    k|K) echo "UP" ;;
-    g|G) echo "TOP" ;;
-    [1-9]) echo "NUM:$key" ;;
-    *) echo "CHAR:$key" ;;
-  esac
-}
-
-# ---- menu action dispatcher ------------------------------------------------
+# ─────────────────────────────────────────────────
+# Menu dispatch
+# ─────────────────────────────────────────────────
 _dispatch_menu() {
   local id="$1"
-
   case "$id" in
-    all)
-      _run_all_modules
-      ;;
-    quick)
-      _run_quick_update
-      ;;
-    stars)
-      _run_stars_report
-      ;;
-    cron)
-      _menu_cron_schedule
-      ;;
-    config)
-      _menu_config_modules
-      ;;
-    help)
-      _show_help_screen
-      ;;
-    *)
-      echo -e "${RED}Unknown action: $id${RST}"
-      ;;
+    all)    _run_all_modules ;;
+    quick)  _run_quick_update ;;
+    repos)  show_cursor; _run_module "repos"; hide_cursor ;;
+    cron)   _menu_cron_schedule ;;
+    config) _show_config_screen ;;
+    help)   _show_help_screen ;;
+    *)      echo -e "${RED}Unknown action: ${id}${RST}" ;;
   esac
-
-  echo
-  echo -e "  ${DIM}Press any key to return to menu...${RST}"
-  read -r -s -n 1
-}
-
-# ---- quick update -----------------------------------------------------------
-_run_quick_update() {
-  clear_screen
-  echo
-  echo -e "  ${BOLD}${BCYN}crisp quick${RST} ${BOLD}— core package update${RST}"
-  echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"
-  echo
-
-  local start_time; start_time=$(date +%s)
-
-  # Run only the core package managers
-  for m in brew pip npm; do
-    if echo "$CRISP_MODULES" | grep -qw "$m"; then
-      _run_module "$m"
-    fi
-  done
-
-  local elapsed; elapsed=$(($(date +%s) - start_time))
-  echo
-  echo -e "  ${GRN}✓ Quick update done${RST} — ${elapsed}s"
-  echo
-}
-
-# ---- stars report ----------------------------------------------------------
-_run_stars_report() {
-  clear_screen
-  echo
-  echo -e "  ${BOLD}${BCYN}crisp stars${RST} ${BOLD}— GitHub star report${RST}"
-  echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"
-  echo
-
-  local stars_script="$CRISP_MODULES_DIR/stars.sh"
-  if [ -f "$stars_script" ]; then
-    source "$stars_script"
-    crisp_stars_run
-  else
-    echo -e "  ${RED}✗ stars module not found${RST}"
+  if [[ "$id" == "all" || "$id" == "quick" ]]; then
+    echo; press_any_key 5
   fi
-  echo
 }
 
-# ---- cron schedule sub-menu ------------------------------------------------
+# ─────────────────────────────────────────────────
+# Cron scheduling submenu
+# ─────────────────────────────────────────────────
 CRON_PRESETS=(
-  "every_5m:Every 5 minutes:Every 5 minutes"
-  "every_15m:Every 15 minutes:Every 15 minutes"
-  "every_30m:Every 30 minutes:Every 30 minutes"
-  "every_1h:Every 1 hour:Every hour"
-  "every_6h:Every 6 hours:Every 6 hours"
-  "daily_09:Daily at 09:00:Daily at 09:00"
-  "weekly_mon:Weekly (Monday 09:00):Every Monday at 09:00"
-  "monthly_1:Monthly (1st, 03:00):1st of each month at 03:00"
-  "custom:Custom cron expression:Custom cron expression"
+  "every_5m:Every 5 minutes"
+  "every_15m:Every 15 minutes"
+  "every_30m:Every 30 minutes"
+  "every_1h:Every 1 hour"
+  "every_6h:Every 6 hours"
+  "daily_09:Daily at 09:00"
+  "weekly_mon:Weekly (Monday 09:00)"
+  "monthly_1:Monthly (1st, 03:00)"
+  "custom:Custom cron expression"
 )
-
 _cron_preset_count() { echo "${#CRON_PRESETS[@]}"; }
-
 _cron_get_item() {
-  local idx=$1 field=$2
-  local item="${CRON_PRESETS[$idx]}"
-  case $field in
-    id)    echo "$item" | cut -d: -f1 ;;
-    title) echo "$item" | cut -d: -f2 ;;
-    desc)  echo "$item" | cut -d: -f3 ;;
-  esac
+  local i=$1 f=$2
+  local item="${CRON_PRESETS[$i]}"
+  case $f in id) echo "$item" | cut -d: -f1 ;; title) echo "$item" | cut -d: -f2 ;; esac
 }
-
 _cron_expression() {
   case "$1" in
-    every_5m)    echo "*/5 * * * *" ;;
-    every_15m)   echo "*/15 * * * *" ;;
-    every_30m)   echo "*/30 * * * *" ;;
-    every_1h)    echo "0 * * * *" ;;
-    every_6h)    echo "0 */6 * * *" ;;
-    daily_09)    echo "0 9 * * *" ;;
-    weekly_mon)  echo "0 9 * * 1" ;;
-    monthly_1)   echo "0 3 1 * *" ;;
-    *)           echo "" ;;
+    every_5m) echo "*/5 * * * *" ;; every_15m) echo "*/15 * * * *" ;;
+    every_30m) echo "*/30 * * * *" ;; every_1h) echo "0 * * * *" ;;
+    every_6h) echo "0 */6 * * *" ;; daily_09) echo "0 9 * * *" ;;
+    weekly_mon) echo "0 9 * * 1" ;; monthly_1) echo "0 3 1 * *" ;; *) echo "" ;;
   esac
 }
 
 _menu_cron_schedule() {
-  local cron_selection=0
-  local cron_n; cron_n=$(_cron_preset_count)
-
+  local sel=0 n; n="$(_cron_preset_count)"
   while true; do
     clear_screen
-
-    echo
-    echo -e "  ${BOLD}${BCYN}crisp cron${RST} ${BOLD}— auto-update scheduler${RST}"
-    echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"
-    echo
+    section_header "${BCYN}crisp cron${RST} — auto-update scheduler"
+    _draw_divider
     echo -e "  ${DIM}How often should it run?${RST}"
     echo
-
-    for ((i=0; i<cron_n; i++)); do
-      local title="$(_cron_get_item $i title)"
-      local desc="$(_cron_get_item $i desc)"
-
-      if [ $i -eq $cron_selection ]; then
-        echo -e "  ${BCYN}▶ ${title}${RST}"
-        echo -e "     ${DIM}${desc}${RST}"
+    for ((i=0; i<n; i++)); do
+      local title; title="$(_cron_get_item "$i" title)"
+      if [[ $i -eq $sel ]]; then
+        echo -e "  ${BCYN}${ICO_ARROW} ${title}${RST}"
       else
         echo -e "  ${DIM}  ${title}${RST}"
-        echo -e "     ${DIM}${desc}${RST}"
       fi
-      echo
     done
-
     echo
-    echo -e "  ${DIM}↑/↓: select  │  Enter: confirm  │  q: back${RST}"
-    echo
-
-    local key; key=$(read_key)
-
+    _draw_divider
+    echo -e "  ${DIM}↑/↓: select  ${ICO_BULLET}  Enter: confirm  ${ICO_BULLET}  q: back${RST}"
+    local key; key="$(read_key)"
     case "$key" in
-      UP)
-        cron_selection=$(( (cron_selection - 1 + cron_n) % cron_n ))
-        ;;
-      DOWN)
-        cron_selection=$(( (cron_selection + 1) % cron_n ))
-        ;;
+      UP)   sel=$(( (sel - 1 + n) % n )) ;;
+      DOWN) sel=$(( (sel + 1) % n )) ;;
       ENTER)
-        local cron_id="$(_cron_get_item $cron_selection id)"
-
-        if [ "$cron_id" = "custom" ]; then
-          _cron_custom_input
-        else
-          local expr; expr=$(_cron_expression "$cron_id")
-          local title; title="$(_cron_get_item $cron_selection title)"
-          _schedule_cron_job "$title" "$expr"
-        fi
-        return
-        ;;
-      QUIT|ESC)
-        return
-        ;;
+        local cid; cid="$(_cron_get_item "$sel" id)"
+        if [[ "$cid" == "custom" ]]; then _cron_custom_input
+        else _schedule_cron_job "$(_cron_get_item "$sel" title)" "$(_cron_expression "$cid")"; fi
+        return ;;
+      QUIT|ESC) return ;;
     esac
   done
 }
 
 _cron_custom_input() {
   clear_screen
-  echo
-  echo -e "  ${BOLD}${BCYN}crisp cron${RST} ${BOLD}— custom cron expression${RST}"
-  echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"
-  echo
+  section_header "${BCYN}crisp cron${RST} — custom expression"
+  _draw_divider
   echo -e "  ${DIM}Format: minute hour day month weekday${RST}"
-  echo -e "  ${DIM}Examples:${RST}"
-  echo -e "  ${DIM}  */15 * * * *    → every 15 minutes${RST}"
-  echo -e "  ${DIM}  0 */2 * * *     → every 2 hours${RST}"
-  echo -e "  ${DIM}  0 9 * * 1-5     → weekdays at 9 AM${RST}"
-  echo -e "  ${DIM}  0 0 1 * *       → 1st of month, midnight${RST}"
+  echo -e "  ${DIM}Example: */15 * * * * (every 15 min)${RST}"
   echo
-
   printf "  ${BCYN}Cron expression: ${RST}"
   read -r custom_expr
-
-  if [ -z "$custom_expr" ]; then
-    echo -e "  ${YEL}⚠ Cancelled${RST}"
-    sleep 1
-    return
-  fi
-
+  [[ -z "$custom_expr" ]] && { status_warn "Cancelled"; sleep 1; return; }
   _schedule_cron_job "Custom: $custom_expr" "$custom_expr"
 }
 
 _schedule_cron_job() {
   local title="$1" expr="$2"
-
-  # Check if hermes CLI is available
   if ! command -v hermes &>/dev/null; then
     clear_screen
-    echo
-    echo -e "  ${BOLD}${BCYN}crisp cron${RST} ${BOLD}— schedule confirmation${RST}"
-    echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"
-    echo
-    echo -e "  ${RED}✗ Hermes CLI not found!${RST}"
-    echo
-    echo -e "  ${DIM}Hermes Agent is required for cron scheduling.${RST}"
-    echo -e "  ${DIM}Kurulum: https://hermes-agent.nousresearch.com${RST}"
-    echo
-    echo -e "  ${DIM}Press any key to return...${RST}"
-    read -r -s -n 1
-    return 1
+    status_err "Hermes CLI not found!"
+    echo -e "  ${DIM}Install: https://hermes-agent.nousresearch.com${RST}"
+    press_any_key 5; return 1
   fi
-
   clear_screen
-  echo
-  echo -e "  ${BOLD}${BCYN}crisp cron${RST} ${BOLD}— schedule confirmation${RST}"
-  echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"
-  echo
-  echo -e "  ${BOLD}Schedule:${RST} ${CYN}${title}${RST}"
-  echo -e "  ${BOLD}Cron:${RST}      ${DIM}${expr}${RST}"
-  echo -e "  ${BOLD}Komut:${RST}     ${DIM}crisp all${RST}"
-  echo
-  echo -e "  ${DIM}Registered via Hermes cron job system.${RST}"
+  section_header "${BCYN}crisp cron${RST} — confirm"
+  _draw_divider
+  kv_label "Schedule" "${CYN}${title}${RST}"
+  kv_label "Cron" "${DIM}${expr}${RST}"
+  kv_label "Command" "${DIM}crisp all${RST}"
   echo
   printf "  ${BCYN}Confirm? (y/n): ${RST}"
   read -r confirm
-
   case "$confirm" in
     y|Y|yes)
-      echo
-      echo -e "  ${CYN}→ creating cron job...${RST}"
-
-      # Create cronjob via hermes
-      local cron_output
-      cron_output=$(hermes cron create \
-        --name "crisp-auto-update" \
-        --deliver local \
-        "$expr" \
-        "Run 'crisp all' to update all modules. Report results." \
-        2>&1) || true
-
-      echo -e "  ${GRN}✓ Cron job created!${RST}"
-      echo
-      echo -e "  ${DIM}Output:${RST}"
-      echo -e "  ${DIM}${cron_output}${RST}"
-      ;;
-    *)
-      echo -e "  ${YEL}⚠ Cancelled${RST}"
-      ;;
+      echo; status_info "Creating cron job..."
+      hermes cron create --name "crisp-auto-update" --deliver local "$expr" "Run 'crisp all' to update all modules." 2>&1 || true
+      status_ok "Cron job created!" ;;
+    *) status_warn "Cancelled" ;;
   esac
-
   sleep 2
 }
 
-# ---- config modules sub-menu -----------------------------------------------
-_menu_config_modules() {
-  clear_screen
-  echo
-  echo -e "  ${BOLD}${BCYN}crisp config${RST} ${BOLD}— module configuration${RST}"
-  echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"
-  echo
-  echo -e "  ${DIM}Config file:${RST} ${CRISP_CONF}"
-  echo
-  echo -e "  ${BOLD}Active modules:${RST}"
-  echo
+# ─────────────────────────────────────────────────
+# Interactive menu loop
+# ─────────────────────────────────────────────────
+_interactive_menu() {
+  if [[ ! -t 1 ]]; then
+    echo "crisp: interactive menu requires a terminal"
+    exit 1
+  fi
 
-  for m in $CRISP_MODULES; do
-    local desc; desc=$(_module_desc "$m")
-    if [ -f "$(_module_path "$m")" ]; then
-      echo -e "    ${GRN}●${RST} ${CYN}${m}${RST} ${DIM}— ${desc}${RST}"
-    else
-      echo -e "    ${YEL}○${RST} ${CYN}${m}${RST} ${DIM}— ${desc} ${YEL}(file missing)${RST}"
-    fi
+  local n sel=0 key id
+  n="$(_menu_count)"
+  _draw_menu "$sel"
+
+  while true; do
+    key="$(read_key)"
+    case "$key" in
+      UP)     sel=$(( (sel - 1 + n) % n )); _draw_menu "$sel" ;;
+      DOWN)   sel=$(( (sel + 1) % n )); _draw_menu "$sel" ;;
+      TOP)    sel=0; _draw_menu "$sel" ;;
+      ENTER)
+        id="$(_get_menu_item "$sel" id)"
+        show_cursor; _dispatch_menu "$id"; hide_cursor; _draw_menu "$sel" ;;
+      NUM:*)
+        local num="${key#NUM:}"
+        if [[ "$num" -ge 1 ]] && [[ "$num" -le "$n" ]]; then
+          sel=$((num - 1))
+          id="$(_get_menu_item "$sel" id)"
+          show_cursor; _dispatch_menu "$id"; hide_cursor; _draw_menu "$sel"
+        fi ;;
+      VERSION) _show_version_screen; _draw_menu "$sel" ;;
+      HELP)    show_cursor; _show_help_screen; hide_cursor; _draw_menu "$sel" ;;
+      QUIT|ESC)
+        clear_screen; show_cursor
+        echo; echo -e "  ${DIM}crisp — see you soon!${RST}"; echo
+        exit 0 ;;
+    esac
   done
-
-  echo
-  echo -e "  ${DIM}All available modules:${RST}"
-  echo
-
-  # List all .sh files in modules dir
-  for f in "$CRISP_MODULES_DIR"/*.sh; do
-    if [ -f "$f" ]; then
-      local m; m=$(basename "$f" .sh)
-      if ! echo "$CRISP_MODULES" | grep -qw "$m"; then
-        local desc; desc=$(_module_desc "$m")
-        echo -e "    ${DIM}○${RST} ${DIM}${m} — ${desc}${RST}"
-      fi
-    fi
-  done
-
-  echo
-  echo -e "  ${DIM}To edit:${RST} ${CYN}crisp.conf${RST} file and"
-  echo -e "  ${DIM}add/remove module names in CRISP_MODULES.${RST}"
-  echo
 }
 
-# ---- help screen -----------------------------------------------------------
-_show_help_screen() {
-  clear_screen
-  _draw_ascii_title
-
-  echo -e "  ${BOLD}USAGE${RST}"
-  echo -e "    ${CYN}crisp${RST}                  interactive menu"
-  echo -e "    ${CYN}crisp all${RST}              run all enabled modules"
-  echo -e "    ${CYN}crisp quick${RST}            quick update (brew/pip/npm)"
-  echo -e "    ${CYN}crisp <module>${RST}         run a specific module"
-  echo -e "    ${CYN}crisp cron${RST}             schedule auto-update"
-  echo -e "    ${CYN}crisp list${RST}             list available modules"
-  echo -e "    ${CYN}crisp --help${RST}           show this message"
-  echo -e "    ${CYN}crisp --version${RST}        show version"
-  echo
-  echo -e "  ${BOLD}MODULES${RST}"
-
-  for m in $CRISP_MODULES; do
-    local desc; desc=$(_module_desc "$m")
-    local status=""
-    if [ -f "$(_module_path "$m")" ]; then
-      status="${GRN}●${RST}"
-    else
-      status="${YEL}○${RST}"
-    fi
-    printf "    ${status} ${CYN}%-12s${RST} %s\n" "$m" "$desc"
-  done
-
-  echo
-  echo -e "  ${BOLD}KEYBOARD SHORTCUTS${RST} (interactive menu)"
-  echo -e "    ${CYN}↑/↓  j/k${RST}   navigate menu"
-  echo -e "    ${CYN}Enter${RST}        select"
-  echo -e "    ${CYN}1-6${RST}          quick select"
-  echo -e "    ${CYN}v${RST}            version"
-  echo -e "    ${CYN}h${RST}            help"
-  echo -e "    ${CYN}q${RST}            quit"
-  echo
-  echo -e "  ${BOLD}FILES${RST}"
-  echo -e "    ${DIM}config:${RST} ${CRISP_CONF}"
-  echo -e "    ${DIM}modules:${RST} ${CRISP_MODULES_DIR}/"
-  echo
-  echo -e "  ${BOLD}VERSION${RST}"
-  echo -e "    ${DIM}crisp v${CRISP_VERSION}${RST}"
-  echo
-}
-
-# ---- version ----------------------------------------------------------------
-_show_version() {
-  echo -e "crisp v${CRISP_VERSION}"
-}
-
-# ---- command-line help -----------------------------------------------------
+# ─────────────────────────────────────────────────
+# Usage
+# ─────────────────────────────────────────────────
 _usage() {
   echo -e "${BOLD}crisp${RST} v${CRISP_VERSION} — ${CRISP_TAGLINE}"
   echo
   echo -e "  ${DIM}Usage:${RST}"
   echo -e "    crisp                     interactive menu"
   echo -e "    crisp all                 run all enabled modules"
-  echo -e "    crisp quick               quick update (brew/pip/npm only)"
-  echo -e "    crisp stars               generate STARRED_REPOS.md"
-  echo -e "    crisp cron                schedule auto-update cron job"
+  echo -e "    crisp quick               quick update (brew/pip/npm)"
   echo -e "    crisp <module>            run a specific module"
+  echo -e "    crisp cron                schedule auto-update"
   echo -e "    crisp list                list available modules"
+  echo -e "    crisp --dry-run           preview without changes"
   echo -e "    crisp --help              show this message"
   echo -e "    crisp --version           show version"
   echo
   echo -e "  ${DIM}Modules:${RST}"
   for m in $CRISP_MODULES; do
-    local desc; desc=$(_module_desc "$m")
-    printf "    ${CYN}%-12s${RST} %s\n" "$m" "$desc"
+    printf "    ${CYN}%-12s${RST} %s\n" "$m" "$(_module_desc "$m")"
   done
   echo
-  echo -e "  ${DIM}Config:${RST} ${CRISP_CONF}"
 }
 
-# ---- interactive menu loop -------------------------------------------------
-_interactive_menu() {
-  # Only show interactive menu if stdout is a terminal
-  if [ ! -t 1 ]; then
-    echo "crisp: interactive menu requires a terminal"
-    exit 1
-  fi
+# ─────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────
+main() {
+  local cmd="" dry_run=false
 
-  local n; n=$(_menu_count)
-  local sel=0
-  local id key
-
-  # Draw header once, then menu area
-  _draw_header
-  _draw_menu_area $sel
-
-  while true; do
-    key=$(read_key)
-
-    case "$key" in
-      UP)
-        sel=$(( (sel - 1 + n) % n ))
-        _back_to_menu
-        _draw_menu_area $sel
-        ;;
-      DOWN)
-        sel=$(( (sel + 1) % n ))
-        _back_to_menu
-        _draw_menu_area $sel
-        ;;
-      TOP)
-        sel=0
-        _back_to_menu
-        _draw_menu_area $sel
-        ;;
-      ENTER)
-        id=$(_get_menu_item $sel id)
-        show_cursor
-        _dispatch_menu "$id"
-        # Full redraw after sub-action
-        _draw_header
-        _draw_menu_area $sel
-        hide_cursor
-        ;;
-      NUM:*)
-        local num="${key#NUM:}"
-        if [ "$num" -ge 1 ] && [ "$num" -le "$n" ]; then
-          sel=$((num - 1))
-          id=$(_get_menu_item $sel id)
-          show_cursor
-          _dispatch_menu "$id"
-          _draw_header
-          _draw_menu_area $sel
-          hide_cursor
-        fi
-        ;;
-      VERSION)
-        clear_screen
-        echo
-        echo -e "  ${BOLD}crisp v${CRISP_VERSION}${RST}"
-        echo -e "  ${DIM}${CRISP_TAGLINE}${RST}"
-        echo -e "  ${DIM}Config: ${CRISP_CONF}${RST}"
-        echo -e "  ${DIM}Modules: ${CRISP_MODULES_DIR}/${RST}"
-        echo
-        echo -e "  ${DIM}Active: ${CRISP_MODULES}${RST}"
-        echo
-        echo -e "  ${DIM}Press any key to return...${RST}"
-        read -r -s -n 1
-        _draw_header
-        _draw_menu_area $sel
-        ;;
-      HELP)
-        show_cursor
-        _show_help_screen
-        echo
-        echo -e "  ${DIM}Press any key to return...${RST}"
-        read -r -s -n 1
-        hide_cursor
-        _draw_header
-        _draw_menu_area $sel
-        ;;
-      QUIT|ESC)
-        clear_screen
-        show_cursor
-        echo
-        echo -e "  ${DIM}crisp — see you soon!${RST}"
-        echo
-        exit 0
-        ;;
+  for arg in "$@"; do
+    case "$arg" in
+      --dry-run) dry_run=true ;;
+      *)         cmd="$arg" ;;
     esac
   done
-}
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  MAIN
-# ══════════════════════════════════════════════════════════════════════════════
-main() {
-  local cmd="${1:-}"
+  [[ "$dry_run" == "true" ]] && export CRISP_DRY_RUN=true
+
+  _ensure_xdg_dirs
 
   case "$cmd" in
-    --help|-h)
-      _usage
-      ;;
-    --version|-v)
-      _show_version
-      ;;
+    --help|-h)    _usage ;;
+    --version|-v) echo "crisp v${CRISP_VERSION}" ;;
     list)
-      echo -e "${BOLD}Available modules:${RST}"
-      echo
-      for m in $CRISP_MODULES; do
-        if [ -f "$(_module_path "$m")" ]; then
-          local desc; desc=$(_module_desc "$m")
-          echo -e "  ${CYN}${m}${RST} ${DIM}— ${desc}${RST}"
-        fi
-      done
-      echo
-      echo -e "${DIM}Enabled in config:${RST} $CRISP_MODULES"
-      echo -e "${DIM}Config file:${RST} $CRISP_CONF"
-      ;;
-    all)
-      _run_all_modules
-      ;;
-    quick)
-      _run_quick_update
-      ;;
-    stars)
-      _run_stars_report
-      ;;
-    cron)
-      _menu_cron_schedule
-      ;;
-    "")
-      _interactive_menu
-      ;;
-    *)
-      # Run specific module
-      echo -e "${BOLD}[${cmd}]${RST}"
-      _run_module "$cmd"
-      ;;
+      echo -e "${BOLD}Available modules:${RST}"; echo
+      for m in $(_all_available_modules); do
+        [[ -f "$(_module_path "$m")" ]] && \
+          echo -e "  ${CYN}${m}${RST} ${DIM}— $(_module_desc "$m")${RST}"
+      done; echo ;;
+    all)    _run_all_modules ;;
+    quick)  _run_quick_update ;;
+    cron)   _menu_cron_schedule ;;
+    "")     _interactive_menu ;;
+    *)      echo -e "${BOLD}[${cmd}]${RST}"; _run_module "$cmd" ;;
   esac
 }
 
