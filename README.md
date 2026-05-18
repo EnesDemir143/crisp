@@ -1,54 +1,122 @@
-# crisp 🥒
+# crisp
 
 **Keep everything crisp and up-to-date.**
 
-crisp, GitHub star'ladığın repolardan yola çıkarak bilgisayarındaki tüm araçları güncel tutan bir TUI updater. brew/pip/npm gibi paket yöneticilerinin ötesinde, `curl | sh`, zip, go install, gh release download gibi yöntemlerle kurulmuş "yetim" araçları da tespit edip günceller.
+A cross-platform CLI tool that updates all your dev tools in one command.
+Beyond brew/pip/npm — crisp also tracks GitHub-starred repos and keeps them current.
 
-## Felsefe
+## Quick Start
 
-Sen GitHub'da bir repoyu star'lıyorsun — o repo bir aracı temsil ediyor. crisp o star'ı kullanarak:
+```bash
+# macOS (Homebrew)
+brew install enesdemir/tap/crisp
 
-1. **Nerede?** — Bu araç bilgisayarında kurulu mu, nereden kurulmuş?
-2. **Güncel mi?** — Kurulu versiyon son release ile aynı mı?
-3. **Güncelle** — Değilse, doğru yöntemle güncelle (brew/pip/git pull/Release binary indir...)
+# Linux / WSL (one-liner)
+curl -fsSL https://raw.githubusercontent.com/EnesDemir143/crisp/main/install.sh | bash
 
-## Kullanım
-
-```
-crisp                  # interaktif menü
-crisp all              # tüm modülleri çalıştır
-crisp quick            # hızlı güncelleme (brew/pip/npm)
-crisp stars            # STARRED_REPOS.md oluştur
-crisp scan             # derin tarama + README analizi
-crisp cron             # otomatik güncelleme zamanla
-crisp <module>         # spesifik modülü çalıştır
-crisp list             # modülleri listele
+# Manual
+git clone https://github.com/EnesDemir143/crisp.git
+ln -s $(pwd)/crisp/crisp /usr/local/bin/crisp
 ```
 
-## Modüller
+**Requirements:** Bash 5.0+ (`brew install bash` on macOS)
 
-| Modül | Ne yapar? |
-|-------|-----------|
-| `brew` | `brew update + upgrade` |
-| `pip` | pip self-upgrade + outdated |
-| `npm` | npm global güncelleme |
-| `pipx` | pipx upgrade-all |
-| `npx` | npx cache temizliği |
-| `uv` | uv self update + tool upgrade |
-| `cargo` | cargo install-update -a |
-| `hermes` | hermes agent update |
-| `repos` | star'lı clone'ları git pull |
-| `stars` | STARRED_REPOS.md oluştur |
-| `scan` | README tarama + yerel tespit |
-| `code` | VS Code extension güncelleme |
-| `graphify` | graphify versiyon kontrolü |
+## Usage
 
-## Yapılacaklar (Roadmap)
+```bash
+crisp                  # interactive TUI menu
+crisp all              # run all enabled modules
+crisp quick            # quick update (brew/pip/npm)
+crisp <module>         # run a specific module
+crisp cron             # schedule auto-update
+crisp list             # list available modules
+crisp --dry-run        # preview without changes
+crisp --help           # show help
+```
 
-- [ ] **Orphan Manager** — brew/pip/npm/cargo dışında kurulmuş araçların tespiti
-  - `strings` ile binary'lerde gömülü `github.com/owner/repo` tespiti
-  - `--version` vs GitHub Releases API ile versiyon karşılaştırma
-  - Otomatik güncelleme (Release binary indir / go install / curl-pipe tekrar)
-- [ ] **Deprecation Radar** — 1+ yıldır güncellenmeyen star'ları tespit + alternatif öner
-- [ ] **Release Notes Digest** — Güncelleme öncesi ne değişmiş özet gösterimi
-- [ ] **Rollback Snapshots** — Binary yedekleme ve eski sürüme dönüş
+### Keyboard Shortcuts (Interactive Menu)
+
+| Key | Action |
+|-----|--------|
+| `↑/↓` or `j/k` | Navigate menu |
+| `Enter` | Select item |
+| `1-9` | Quick select by number |
+| `g` | Jump to top |
+| `v` | Version screen |
+| `h` | Help screen |
+| `q` | Quit |
+
+## Modules
+
+| Module | What it does | Platform |
+|--------|-------------|----------|
+| `brew` | `brew update + brew upgrade` | macOS |
+| `apt` | `apt update && apt upgrade` | Linux |
+| `pip` | pip self-upgrade + outdated packages | All |
+| `pipx` | `pipx upgrade-all` | All |
+| `npm` | npm self-update + global packages | All |
+| `npx` | Clear npx cache | All |
+| `uv` | `uv self update + uv tool upgrade --all` | All |
+| `cargo` | `cargo install-update -a` | All |
+| `hermes` | Hermes Agent update | All |
+| `code` | VS Code extensions update | All |
+| `repos` | Git pull on starred repos | All |
+| `graphify` | graphify version check | All |
+
+## Configuration
+
+crisp reads `~/.config/crisp/crisp.conf`:
+
+```bash
+# List of modules to run (space-separated)
+CRISP_MODULES="graphify brew pip npm hermes repos"
+```
+
+## Project Structure
+
+```
+crisp/
+├── crisp                    # Main CLI (thin orchestrator)
+├── lib/
+│   ├── core/
+│   │   ├── base.sh          # Colors, icons, OS detection, XDG paths
+│   │   ├── ui.sh            # read_key, draw_menu, spinners, format helpers
+│   │   └── common.sh        # Module runner, error isolation
+│   └── modules/
+│       ├── brew.sh          # macOS Homebrew
+│       ├── apt.sh           # Linux apt
+│       ├── pip.sh           # Python pip
+│       └── ...              # 12 modules total
+├── tests/
+│   ├── test_ui.bats         # Key handling tests
+│   ├── test_modules.bats    # Module loading tests
+│   └── test_cron.bats       # Cron expression tests
+├── .editorconfig
+├── .shellcheckrc
+├── LICENSE                  # MIT
+├── CONTRIBUTING.md
+└── SECURITY.md
+```
+
+## Development
+
+```bash
+make test          # Run Bats tests (47 tests)
+make lint          # ShellCheck all .sh files
+make install-hooks # Install pre-commit hooks (shellcheck + shfmt + bats)
+```
+
+## Roadmap
+
+- **Phase 1** ✅ — TUI fix, full-redraw, vim keybindings, bash 5.0+
+- **Phase 2** ✅ — Modular architecture, 12 modules, Bats tests, infrastructure
+- **Phase 3** — CI/CD pipeline, Makefile, install.sh, Homebrew formula
+- **Phase 4** — Orphan manager, deprecation radar, release notes, rollback
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add modules, run tests, and submit PRs.
+
+## License
+
+[MIT](LICENSE) — Enes Demir

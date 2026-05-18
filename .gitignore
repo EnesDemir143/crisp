@@ -25,3 +25,6 @@ __pycache__/
 .idea/
 *.swp
 *.swo
+.agents/
+skills-lock.json
+graphify-out/
