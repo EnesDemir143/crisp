@@ -89,8 +89,11 @@ press_any_key() {
 }
 
 # ─────────────────────────────────────────────────
-# Screen drawing helpers
+# Screen drawing helpers (Mole-style: clear each line before writing)
 # ─────────────────────────────────────────────────
+# Every line uses: printf '\r\033[2K%s\n' "content"
+# \r = cursor to column 0, \033[2K = erase entire line, then write content
+# This prevents leftover characters from previous draws.
 
 # Draw the ASCII art header (block characters, centered)
 _draw_header() {
@@ -98,48 +101,40 @@ _draw_header() {
   w="$(term_width)"
   local title
   title=$(cat <<'ASCIITITLE'
-   ██████╗██████╗ ██╗███████╗██████╗ 
-  ██╔════╝██╔══██╗██║██╔════╝██╔══██╗
-  ██║     ██████╔╝██║███████╗██████╔╝
-  ██║     ██╔══██╗██║╚════██║██╔═══╝ 
-  ╚██████╗██║  ██║██║███████║██║     
-   ╚═════╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     
+ ██▀▀█ █▀▀█ █  █ █▀▀█ █▀▀█
+ █   █ █  █ █  █ █▄▄▀ █▄▄█
+ █▄▄█ ▀▄▄▀ ▀▄▄▀ █  █ █  █
 ASCIITITLE
   )
   while IFS= read -r line; do
     local pad=$(( (w - ${#line}) / 2 ))
     [[ $pad -lt 0 ]] && pad=0
-    printf "%${pad}s" ""
-    echo -e "${BCYN}${line}${RST}"
+    printf '\r\033[2K%*s%s\n' "$pad" '' "${BCYN}${line}${RST}"
   done <<< "$title"
   # Tagline shifted 4 chars right from center
-  local tagline="${DIM}${CRISP_TAGLINE}${RST}"
   local stripped_tag="${CRISP_TAGLINE}"
   local pad=$(( (w - ${#stripped_tag}) / 2 + 4 ))
   [[ $pad -lt 0 ]] && pad=0
-  printf "%${pad}s" ""
-  echo -e "${tagline}"
-  echo
+  printf '\r\033[2K%*s%s\n' "$pad" '' "${DIM}${CRISP_TAGLINE}${RST}"
+  printf '\r\033[2K\n'
 }
 
 # Draw horizontal divider
 _draw_divider() {
   local w
   w="$(term_width)"
-  echo -e "  ${DIM}$(printf '─%.0s' $(seq 1 $((w - 4))))${RST}"
+  printf '\r\033[2K  %s%s%s\n' "${DIM}" "$(printf '─%.0s' $(seq 1 $((w - 4))))" "${RST}"
 }
 
 # Draw the bottom keybinding guide
 _draw_footer() {
   local n="${1:-6}"
-  local w
-  w="$(term_width)"
   _draw_divider
-  echo
-  echo -e "  ${DIM}↑/↓ or j/k: navigate  ${ICO_BULLET}  Enter: select  ${ICO_BULLET}  1-${n}: quick select${RST}"
-  echo -e "  ${DIM}v: version  ${ICO_BULLET}  h: help  ${ICO_BULLET}  q: quit${RST}"
-  echo
-  echo -e "  ${DIM}v${CRISP_VERSION}  ${ICO_BULLET}  ${CRISP_MODULES_DIR}${RST}"
+  printf '\r\033[2K\n'
+  printf '\r\033[2K  %s↑/↓ or j/k: navigate  %s  Enter: select  %s  1-%s: quick select%s\n' "${DIM}" "${ICO_BULLET}" "${ICO_BULLET}" "$n" "${RST}"
+  printf '\r\033[2K  %sv: version  %s  h: help  %s  q: quit%s\n' "${DIM}" "${ICO_BULLET}" "${ICO_BULLET}" "${RST}"
+  printf '\r\033[2K\n'
+  printf '\r\033[2K  %sv%s%s  %s  %s%s\n' "${DIM}" "${CRISP_VERSION}" "${RST}" "${ICO_BULLET}" "${CRISP_MODULES_DIR}" "${RST}"
 }
 
 # Draw menu items with selection highlight (Mole-style full redraw)
@@ -153,13 +148,13 @@ _draw_menu_items() {
     title="$(_get_menu_item "$i" title)"
     desc="$(_get_menu_item "$i" desc)"
     if [[ $i -eq $sel ]]; then
-      echo -e "  ${BCYN}${ICO_ARROW} ${num}. ${title}${RST}"
-      echo -e "     ${DIM}${desc}${RST}"
+      printf '\r\033[2K  %s%s %s. %s%s\n' "${BCYN}" "${ICO_ARROW}" "$num" "$title" "${RST}"
+      printf '\r\033[2K     %s%s%s\n' "${DIM}" "$desc" "${RST}"
     else
-      echo -e "  ${DIM}  ${num}.${RST} ${title}"
-      echo -e "     ${DIM}${desc}${RST}"
+      printf '\r\033[2K  %s  %s.%s %s\n' "${DIM}" "$num" "${RST}" "$title"
+      printf '\r\033[2K     %s%s%s\n' "${DIM}" "$desc" "${RST}"
     fi
-    echo
+    printf '\r\033[2K\n'
   done
 }
 
