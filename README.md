@@ -1,10 +1,14 @@
 # crisp
 
+[![GitHub release](https://img.shields.io/github/v/release/EnesDemir143/crisp)](https://github.com/EnesDemir143/crisp/releases/latest)
+
 **Keep everything up to date, in one command.**
 
 A cross-platform CLI tool that updates all your dev tools — package managers,
 AI agent skills, VS Code extensions, local repos, and more — with a single
 interactive TUI or a quick CLI command.
+
+![crisp UI](screenshots/ui.png)
 
 ## Quick Start
 
