@@ -60,12 +60,6 @@ crisp --help           # show help
 | `crisp rollback <name>` | Restore latest backup of a binary           |
 | `crisp clean-backups`   | Remove backups older than 30 days (default) |
 
-### AI Health Check
-
-| Command | Description |
-|---------|-------------|
-| `crisp ai-health` | AI toolkit health report (ML tools, GPU/CUDA compatibility) |
-
 ### Interactive Config Picker
 
 | Command | Description |
