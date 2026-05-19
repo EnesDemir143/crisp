@@ -36,6 +36,7 @@ _module_desc() {
     uv) echo "uv self update + uv tool upgrade --all" ;;
     hermes) echo "hermes agent update" ;;
     repos) echo "fast-forward pull tracked local repos" ;;
+    rollback) echo "rollback manager for crisp-updated binaries" ;;
     code) echo "VS Code extensions update" ;;
     cargo) echo "cargo installed tools" ;;
     *) echo "custom module" ;;

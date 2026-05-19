@@ -213,6 +213,117 @@ _show_config_screen() {
 }
 
 # ─────────────────────────────────────────────────
+# T21: Config picker — interactive module toggle UI
+# ─────────────────────────────────────────────────
+_save_config_modules() {
+  local new_modules="$1"
+  local dir
+  dir="$(dirname "$CRISP_CONF")"
+  mkdir -p "$dir" 2>/dev/null
+  if [[ -f "$CRISP_CONF" ]]; then
+    if grep -q "^CRISP_MODULES=" "$CRISP_CONF" 2>/dev/null; then
+      if [[ "$CRISP_OS" == "macos" ]]; then
+        sed -i '' "s/^CRISP_MODULES=.*/CRISP_MODULES=\"${new_modules}\"/" "$CRISP_CONF"
+      else
+        sed -i "s/^CRISP_MODULES=.*/CRISP_MODULES=\"${new_modules}\"/" "$CRISP_CONF"
+      fi
+    else
+      echo "CRISP_MODULES=\"${new_modules}\"" >>"$CRISP_CONF"
+    fi
+  else
+    echo "CRISP_MODULES=\"${new_modules}\"" >"$CRISP_CONF"
+  fi
+  CRISP_MODULES="$new_modules"
+}
+
+_show_config_picker() {
+  local -a all_modules
+  while IFS= read -r f; do
+    all_modules+=("$(basename "$f" .sh)")
+  done < <(find "$CRISP_MODULES_DIR" -maxdepth 1 -name '*.sh' 2>/dev/null | sort)
+
+  local -a enabled
+  for m in "${all_modules[@]}"; do
+    if echo " $CRISP_MODULES " | grep -q " $m "; then
+      enabled+=("$m")
+    fi
+  done
+
+  local sel=0 n="${#all_modules[@]}"
+  while true; do
+    clear_screen
+    section_header "${BCYN}crisp config${RST} — interactive module picker"
+    _draw_divider
+    echo
+    echo -e "  ${DIM}Toggle modules with Space, save with Enter${RST}"
+    echo
+
+    local m desc toggle
+    local -i i
+    for ((i = 0; i < n; i++)); do
+      m="${all_modules[$i]}"
+      desc="$(_module_desc "$m")"
+      if echo "${enabled[*]}" | grep -qw "$m"; then
+        toggle="${GRN}${ICO_CHECK}${RST}"
+      else
+        toggle="${DIM}${ICO_CROSS}${RST}"
+      fi
+
+      if [[ $i -eq $sel ]]; then
+        printf '\r\033[2K'
+        echo -e "  ${BCYN}${ICO_ARROW}${RST} ${toggle} ${CYN}${m}${RST} ${DIM}— ${desc}${RST}"
+      else
+        printf '\r\033[2K'
+        echo -e "    ${toggle} ${m} ${DIM}— ${desc}${RST}"
+      fi
+    done
+
+    echo
+    _draw_divider
+    printf '\r\033[2K'
+    echo -e "  ${DIM}↑/↓: navigate  •  Space: toggle  •  Enter: save  •  q: cancel${RST}"
+
+    local key
+    key="$(read_key)"
+    case "$key" in
+      UP) sel=$(((sel - 1 + n) % n)) ;;
+      DOWN) sel=$(((sel + 1) % n)) ;;
+      "CHAR:\ ")
+        m="${all_modules[$sel]}"
+        local found=false
+        local -a new_enabled
+        for e in "${enabled[@]}"; do
+          if [[ "$e" == "$m" ]]; then
+            found=true
+          else
+            new_enabled+=("$e")
+          fi
+        done
+        if [[ "$found" == "false" ]]; then
+          new_enabled=("${enabled[@]}" "$m")
+        fi
+        enabled=("${new_enabled[@]}")
+        ;;
+      ENTER)
+        local new_modules="${enabled[*]}"
+        _save_config_modules "$new_modules"
+        clear_screen
+        section_header "${BCYN}crisp config${RST} — saved"
+        _draw_divider
+        echo
+        status_ok "Configuration saved: ${#enabled[@]} modules active"
+        echo
+        press_any_key 5
+        return
+        ;;
+      QUIT | ESC)
+        return
+        ;;
+    esac
+  done
+}
+
+# ─────────────────────────────────────────────────
 # Menu dispatch
 # ─────────────────────────────────────────────────
 _dispatch_menu() {
@@ -226,7 +337,7 @@ _dispatch_menu() {
       hide_cursor
       ;;
     cron) _menu_cron_schedule ;;
-    config) _show_config_screen ;;
+    config) _show_config_picker ;;
     help) _show_help_screen ;;
     *) echo -e "${RED}Unknown action: ${id}${RST}" ;;
   esac
@@ -615,8 +726,11 @@ main() {
     all) _run_all_modules ;;
     quick) _run_quick_update ;;
     cron) _menu_cron_schedule ;;
+    config) _show_config_picker ;;
     update) _crisp_update ;;
     setup-path) _crisp_setup_path ;;
+    rollback) source "$CRISP_DIR/lib/modules/rollback.sh" && _crisp_rollback_cmd "${@:2}" ;;
+    clean-backups) source "$CRISP_DIR/lib/modules/rollback.sh" && _crisp_clean_backups_cmd "${2:-}" ;;
     "") _interactive_menu ;;
     *)
       echo -e "${BOLD}[${cmd}]${RST}"
