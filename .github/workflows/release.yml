@@ -1,0 +1,76 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$VERSION"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          git log --oneline --no-merges \
+            "$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)"..HEAD \
+            > /tmp/changelog.txt
+          CHANGELOG=$(cat /tmp/changelog.txt)
+          {
+            echo 'changelog<<EOF'
+            cat /tmp/changelog.txt
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "v${{ steps.version.outputs.version }}"
+          body: |
+            ## Changes
+
+            ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+
+      - name: Calculate tarball SHA256
+        id: sha
+        run: |
+          TARBALL_URL="https://api.github.com/repos/${{ github.repository }}/tarball/v${{ steps.version.outputs.version }}"
+          echo "Waiting for tarball to be available..."
+          for i in $(seq 1 10); do
+            STATUS=$(curl -sL -o /dev/null -w "%{http_code}" "$TARBALL_URL")
+            if [ "$STATUS" = "200" ]; then
+              curl -sL "$TARBALL_URL" -o /tmp/crisp.tar.gz
+              SHA256=$(sha256sum /tmp/crisp.tar.gz | cut -d' ' -f1)
+              echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+              echo "SHA256: $SHA256"
+              break
+            fi
+            sleep 3
+          done
+
+      - name: Update Homebrew formula
+        if: success() && steps.sha.outputs.sha256 != ''
+        run: |
+          echo "Homebrew formula update would go here"
+          echo "To automate: add a step that clones enesdemir/homebrew-tap,"
+          echo "updates Formula/crisp.rb with new version + SHA256,"
+          echo "commits, and pushes."

@@ -9,7 +9,7 @@ echo "🔍 Running pre-commit checks..."
 # 1. ShellCheck
 if command -v shellcheck &>/dev/null; then
   echo "  → ShellCheck..."
-  shellcheck -x lib/core/*.sh lib/modules/*.sh crisp 2>&1 || {
+  shellcheck -x lib/core/*.sh lib/modules/*.sh crisp install.sh 2>&1 || {
     echo "  ✗ ShellCheck failed — fix errors before committing"
     exit 1
   }
@@ -21,7 +21,7 @@ fi
 # 2. shfmt (formatting check)
 if command -v shfmt &>/dev/null; then
   echo "  → shfmt..."
-  shfmt -d -i 2 -ci lib/core/*.sh lib/modules/*.sh crisp 2>&1 || {
+  shfmt -d -i 2 -ci lib/core/*.sh lib/modules/*.sh crisp install.sh 2>&1 || {
     echo "  ✗ shfmt failed — run 'shfmt -w -i 2 -ci .' to fix"
     exit 1
   }
