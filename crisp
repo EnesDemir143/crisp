@@ -22,7 +22,8 @@ fi
 _real_script_dir() {
   local src="${BASH_SOURCE[0]}"
   while [[ -L "$src" ]]; do
-    local dir; dir="$(cd "$(dirname "$src")" && pwd)"
+    local dir
+    dir="$(cd "$(dirname "$src")" && pwd)"
     src="$(readlink "$src")"
     [[ "$src" != /* ]] && src="$dir/$src"
   done
@@ -33,9 +34,16 @@ source "$CRISP_DIR/lib/core/base.sh"
 source "$CRISP_DIR/lib/core/ui.sh"
 source "$CRISP_DIR/lib/core/common.sh"
 
-# Project constants
-CRISP_VERSION="1.0.0"
-CRISP_TAGLINE="Keep everything crisp and up-to-date"
+# Project constants — version from git tag or VERSION file
+if [[ -f "$CRISP_DIR/VERSION" ]]; then
+  CRISP_VERSION="$(head -n1 "$CRISP_DIR/VERSION")"
+elif command -v git &>/dev/null && git -C "$CRISP_DIR" rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+  CRISP_VERSION="$(git -C "$CRISP_DIR" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"
+  [[ -z "$CRISP_VERSION" ]] && CRISP_VERSION="0.0.0"
+else
+  CRISP_VERSION="0.0.0"
+fi
+readonly CRISP_VERSION
 
 # Load config
 if [[ -f "$CRISP_CONF" ]]; then
@@ -71,9 +79,9 @@ _get_menu_item() {
   local i=$1 f=$2
   local item="${MENU_ITEMS[$i]}"
   case $f in
-    id)    echo "$item" | cut -d: -f1 ;;
+    id) echo "$item" | cut -d: -f1 ;;
     title) echo "$item" | cut -d: -f2 ;;
-    desc)  echo "$item" | cut -d: -f3 ;;
+    desc) echo "$item" | cut -d: -f3 ;;
   esac
 }
 
@@ -127,6 +135,8 @@ _show_help_screen() {
   echo -e "    ${CYN}crisp <module>${RST}            run a specific module"
   echo -e "    ${CYN}crisp cron${RST}                schedule auto-update"
   echo -e "    ${CYN}crisp list${RST}                list modules"
+  echo -e "    ${CYN}crisp update${RST}             self-update crisp"
+  echo -e "    ${CYN}crisp setup-path${RST}         add crisp to PATH"
   echo -e "    ${CYN}crisp --dry-run${RST}           preview without changes"
   section_header "KEYBOARD SHORTCUTS"
   echo -e "    ${CYN}↑/↓ or j/k${RST}    navigate menu"
@@ -155,7 +165,8 @@ _show_version_screen() {
   kv_label "Modules" "$CRISP_MODULES_DIR"
   kv_label "Data" "$CRISP_DATA_HOME"
   echo
-  local count; count="$(_module_count)"
+  local count
+  count="$(_module_count)"
   section_header "Active modules (${count})"
   for m in $CRISP_MODULES; do
     if [[ -f "$(_module_path "$m")" ]]; then
@@ -176,7 +187,8 @@ _show_config_screen() {
   echo
   section_header "Active modules"
   for m in $CRISP_MODULES; do
-    local desc; desc="$(_module_desc "$m")"
+    local desc
+    desc="$(_module_desc "$m")"
     if [[ -f "$(_module_path "$m")" ]]; then
       echo -e "    ${GRN}${ICO_DOT_FILLED}${RST} ${CYN}${m}${RST} ${DIM}— ${desc}${RST}"
     else
@@ -186,7 +198,8 @@ _show_config_screen() {
   echo
   section_header "All available modules"
   for m in $(_all_available_modules); do
-    local desc; desc="$(_module_desc "$m")"
+    local desc
+    desc="$(_module_desc "$m")"
     if echo "$CRISP_MODULES" | grep -qw "$m"; then
       echo -e "    ${GRN}${ICO_CHECK}${RST} ${CYN}${m}${RST} ${DIM}— ${desc}${RST}"
     else
@@ -205,16 +218,21 @@ _show_config_screen() {
 _dispatch_menu() {
   local id="$1"
   case "$id" in
-    all)    _run_all_modules ;;
-    quick)  _run_quick_update ;;
-    repos)  show_cursor; _run_module "repos"; hide_cursor ;;
-    cron)   _menu_cron_schedule ;;
+    all) _run_all_modules ;;
+    quick) _run_quick_update ;;
+    repos)
+      show_cursor
+      _run_module "repos"
+      hide_cursor
+      ;;
+    cron) _menu_cron_schedule ;;
     config) _show_config_screen ;;
-    help)   _show_help_screen ;;
-    *)      echo -e "${RED}Unknown action: ${id}${RST}" ;;
+    help) _show_help_screen ;;
+    *) echo -e "${RED}Unknown action: ${id}${RST}" ;;
   esac
   if [[ "$id" == "all" || "$id" == "quick" ]]; then
-    echo; press_any_key 5
+    echo
+    press_any_key 5
   fi
 }
 
@@ -248,15 +266,17 @@ _cron_expression() {
 }
 
 _menu_cron_schedule() {
-  local sel=0 n; n="$(_cron_preset_count)"
+  local sel=0 n
+  n="$(_cron_preset_count)"
   while true; do
     clear_screen
     section_header "${BCYN}crisp cron${RST} — auto-update scheduler"
     _draw_divider
     echo -e "  ${DIM}How often should it run?${RST}"
     echo
-    for ((i=0; i<n; i++)); do
-      local title; title="$(_cron_get_item "$i" title)"
+    for ((i = 0; i < n; i++)); do
+      local title
+      title="$(_cron_get_item "$i" title)"
       if [[ $i -eq $sel ]]; then
         echo -e "  ${BCYN}${ICO_ARROW} ${title}${RST}"
       else
@@ -266,16 +286,20 @@ _menu_cron_schedule() {
     echo
     _draw_divider
     echo -e "  ${DIM}↑/↓: select  ${ICO_BULLET}  Enter: confirm  ${ICO_BULLET}  q: back${RST}"
-    local key; key="$(read_key)"
+    local key
+    key="$(read_key)"
     case "$key" in
-      UP)   sel=$(( (sel - 1 + n) % n )) ;;
-      DOWN) sel=$(( (sel + 1) % n )) ;;
+      UP) sel=$(((sel - 1 + n) % n)) ;;
+      DOWN) sel=$(((sel + 1) % n)) ;;
       ENTER)
-        local cid; cid="$(_cron_get_item "$sel" id)"
-        if [[ "$cid" == "custom" ]]; then _cron_custom_input
+        local cid
+        cid="$(_cron_get_item "$sel" id)"
+        if [[ "$cid" == "custom" ]]; then
+          _cron_custom_input
         else _schedule_cron_job "$(_cron_get_item "$sel" title)" "$(_cron_expression "$cid")"; fi
-        return ;;
-      QUIT|ESC) return ;;
+        return
+        ;;
+      QUIT | ESC) return ;;
     esac
   done
 }
@@ -289,7 +313,11 @@ _cron_custom_input() {
   echo
   printf "  ${BCYN}Cron expression: ${RST}"
   read -r custom_expr
-  [[ -z "$custom_expr" ]] && { status_warn "Cancelled"; sleep 1; return; }
+  [[ -z "$custom_expr" ]] && {
+    status_warn "Cancelled"
+    sleep 1
+    return
+  }
   _schedule_cron_job "Custom: $custom_expr" "$custom_expr"
 }
 
@@ -299,7 +327,8 @@ _schedule_cron_job() {
     clear_screen
     status_err "Hermes CLI not found!"
     echo -e "  ${DIM}Install: https://hermes-agent.nousresearch.com${RST}"
-    press_any_key 5; return 1
+    press_any_key 5
+    return 1
   fi
   clear_screen
   section_header "${BCYN}crisp cron${RST} — confirm"
@@ -311,10 +340,12 @@ _schedule_cron_job() {
   printf "  ${BCYN}Confirm? (y/n): ${RST}"
   read -r confirm
   case "$confirm" in
-    y|Y|yes)
-      echo; status_info "Creating cron job..."
+    y | Y | yes)
+      echo
+      status_info "Creating cron job..."
       hermes cron create --name "crisp-auto-update" --deliver local "$expr" "Run 'crisp all' to update all modules." 2>&1 || true
-      status_ok "Cron job created!" ;;
+      status_ok "Cron job created!"
+      ;;
     *) status_warn "Cancelled" ;;
   esac
   sleep 2
@@ -340,25 +371,54 @@ _interactive_menu() {
   while true; do
     key="$(read_key)"
     case "$key" in
-      UP)     sel=$(( (sel - 1 + n) % n )); _draw_menu "$sel" ;;
-      DOWN)   sel=$(( (sel + 1) % n )); _draw_menu "$sel" ;;
-      TOP)    sel=0; _draw_menu "$sel" ;;
+      UP)
+        sel=$(((sel - 1 + n) % n))
+        _draw_menu "$sel"
+        ;;
+      DOWN)
+        sel=$(((sel + 1) % n))
+        _draw_menu "$sel"
+        ;;
+      TOP)
+        sel=0
+        _draw_menu "$sel"
+        ;;
       ENTER)
         id="$(_get_menu_item "$sel" id)"
-        show_cursor; _dispatch_menu "$id"; hide_cursor; _draw_menu "$sel" ;;
+        show_cursor
+        _dispatch_menu "$id"
+        hide_cursor
+        _draw_menu "$sel"
+        ;;
       NUM:*)
         local num="${key#NUM:}"
         if [[ "$num" -ge 1 ]] && [[ "$num" -le "$n" ]]; then
           sel=$((num - 1))
           id="$(_get_menu_item "$sel" id)"
-          show_cursor; _dispatch_menu "$id"; hide_cursor; _draw_menu "$sel"
-        fi ;;
-      VERSION) _show_version_screen; _draw_menu "$sel" ;;
-      HELP)    show_cursor; _show_help_screen; hide_cursor; _draw_menu "$sel" ;;
-      QUIT|ESC)
-        leave_alt_screen; show_cursor
-        echo; echo -e "  ${DIM}crisp — see you soon!${RST}"; echo
-        exit 0 ;;
+          show_cursor
+          _dispatch_menu "$id"
+          hide_cursor
+          _draw_menu "$sel"
+        fi
+        ;;
+      VERSION)
+        _show_version_screen
+        _draw_menu "$sel"
+        ;;
+      HELP)
+        show_cursor
+        _show_help_screen
+        hide_cursor
+        _draw_menu "$sel"
+        ;;
+      QUIT | ESC)
+        leave_alt_screen
+        show_cursor
+        echo
+        echo -e "  ${DIM}crisp — see you soon!${RST}"
+        echo
+        exit 0
+        ;;
     esac
   done
 }
@@ -376,6 +436,8 @@ _usage() {
   echo -e "    crisp <module>            run a specific module"
   echo -e "    crisp cron                schedule auto-update"
   echo -e "    crisp list                list available modules"
+  echo -e "    crisp update              self-update crisp"
+  echo -e "    crisp setup-path          add crisp to PATH"
   echo -e "    crisp --dry-run           preview without changes"
   echo -e "    crisp --help              show this message"
   echo -e "    crisp --version           show version"
@@ -388,6 +450,134 @@ _usage() {
 }
 
 # ─────────────────────────────────────────────────
+# Self-update (T11)
+# ─────────────────────────────────────────────────
+_crisp_update() {
+  clear_screen
+  section_header "${BCYN}crisp update${RST} — self-update"
+  _draw_divider
+  kv_label "Current" "v${CRISP_VERSION}"
+  echo
+
+  # Check for git remote updates first
+  if command -v git &>/dev/null && [[ -d "$CRISP_HOME/.git" ]]; then
+    status_info "Fetching latest changes..."
+    git -C "$CRISP_HOME" fetch origin main 2>/dev/null || true
+    local local_sha remote_sha
+    local_sha="$(git -C "$CRISP_HOME" rev-parse HEAD)"
+    remote_sha="$(git -C "$CRISP_HOME" rev-parse FETCH_HEAD 2>/dev/null || echo "")"
+    if [[ -n "$remote_sha" ]] && [[ "$local_sha" == "$remote_sha" ]]; then
+      status_ok "Already up-to-date (git)"
+      press_any_key 5
+      return 0
+    fi
+    status_info "Pulling latest from main..."
+    if git -C "$CRISP_HOME" pull --ff-only origin main 2>&1; then
+      local new_version
+      new_version="$(git -C "$CRISP_HOME" describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")"
+      status_ok "Updated to ${new_version}"
+    else
+      status_err "Failed to pull updates"
+      press_any_key 5
+      return 1
+    fi
+
+  elif [[ "$CRISP_OS" == "macos" ]]; then
+    # brew-based install
+    if command -v brew &>/dev/null && brew list --formula enesdemir/tap/crisp &>/dev/null 2>&1; then
+      status_info "Upgrading via Homebrew..."
+      brew upgrade enesdemir/tap/crisp || {
+        status_err "Homebrew upgrade failed"
+        press_any_key 5
+        return 1
+      }
+      status_ok "Updated via Homebrew"
+    else
+      status_info "Re-running installer..."
+      curl -fsSL https://raw.githubusercontent.com/enesdemir/crisp/main/install.sh | bash || {
+        status_err "Re-install failed"
+        press_any_key 5
+        return 1
+      }
+    fi
+
+  else
+    # Linux: re-run installer
+    status_info "Re-running installer..."
+    curl -fsSL https://raw.githubusercontent.com/enesdemir/crisp/main/install.sh | bash || {
+      status_err "Re-install failed"
+      press_any_key 5
+      return 1
+    }
+  fi
+
+  echo
+  press_any_key 5
+  return 0
+}
+
+# ─────────────────────────────────────────────────
+# PATH setup (T12)
+# ─────────────────────────────────────────────────
+_crisp_setup_path() {
+  local shell_name rc_file
+  shell_name="$(basename "${SHELL:-/bin/bash}")"
+
+  # Determine the correct rc file
+  case "$shell_name" in
+    bash)
+      if [[ -f "$HOME/.bashrc" ]]; then
+        rc_file="$HOME/.bashrc"
+      elif [[ -f "$HOME/.bash_profile" ]]; then
+        rc_file="$HOME/.bash_profile"
+      else
+        rc_file="$HOME/.bashrc"
+      fi
+      ;;
+    zsh)
+      if [[ -f "$HOME/.zshrc" ]]; then
+        rc_file="$HOME/.zshrc"
+      elif [[ -f "$HOME/.zshenv" ]]; then
+        rc_file="$HOME/.zshenv"
+      else
+        rc_file="$HOME/.zshrc"
+      fi
+      ;;
+    fish)
+      rc_file="$HOME/.config/fish/config.fish"
+      mkdir -p "$(dirname "$rc_file")"
+      ;;
+    *)
+      rc_file="$HOME/.bashrc"
+      shell_name="bash"
+      ;;
+  esac
+
+  # Find which directory crisp is in
+  local crisp_bin
+  crisp_bin="$(dirname "$(command -v crisp 2>/dev/null || readlink -f "$(command -v crisp 2>/dev/null || echo "$CRISP_DIR/crisp")")")"
+
+  # Check if already in PATH config
+  if grep -q "${crisp_bin}" "$rc_file" 2>/dev/null; then
+    echo -e "  ${GRN}${ICO_OK}${RST} ${crisp_bin} already in ${rc_file}"
+    echo
+    echo -e "  ${DIM}Run 'source ${rc_file}' or restart shell.${RST}"
+    return 0
+  fi
+
+  # Append to rc file
+  {
+    echo ""
+    echo "# crisp PATH — added by crisp setup-path"
+    echo "export PATH=\"${crisp_bin}:\$PATH\""
+  } >>"$rc_file"
+
+  echo -e "  ${GRN}${ICO_OK}${RST} Added to ${rc_file}"
+  echo -e "  ${CYN}Run 'source ${rc_file}' or restart shell.${RST}"
+  echo
+}
+
+# ─────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────
 main() {
@@ -396,7 +586,7 @@ main() {
   for arg in "$@"; do
     case "$arg" in
       --dry-run) dry_run=true ;;
-      *)         cmd="$arg" ;;
+      *) cmd="$arg" ;;
     esac
   done
 
@@ -405,19 +595,33 @@ main() {
   _ensure_xdg_dirs
 
   case "$cmd" in
-    --help|-h)    _usage ;;
-    --version|-v) echo "crisp v${CRISP_VERSION}" ;;
+    --help | -h) _usage ;;
+    --version | -v)
+      local commit=""
+      if command -v git &>/dev/null && git -C "$CRISP_DIR" rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+        commit="$(git -C "$CRISP_DIR" rev-parse --short HEAD)"
+      fi
+      echo "crisp ${CRISP_VERSION}${commit:+ ($commit)}"
+      ;;
     list)
-      echo -e "${BOLD}Available modules:${RST}"; echo
+      echo -e "${BOLD}Available modules:${RST}"
+      echo
       for m in $(_all_available_modules); do
-        [[ -f "$(_module_path "$m")" ]] && \
+        [[ -f "$(_module_path "$m")" ]] &&
           echo -e "  ${CYN}${m}${RST} ${DIM}— $(_module_desc "$m")${RST}"
-      done; echo ;;
-    all)    _run_all_modules ;;
-    quick)  _run_quick_update ;;
-    cron)   _menu_cron_schedule ;;
-    "")     _interactive_menu ;;
-    *)      echo -e "${BOLD}[${cmd}]${RST}"; _run_module "$cmd" ;;
+      done
+      echo
+      ;;
+    all) _run_all_modules ;;
+    quick) _run_quick_update ;;
+    cron) _menu_cron_schedule ;;
+    update) _crisp_update ;;
+    setup-path) _crisp_setup_path ;;
+    "") _interactive_menu ;;
+    *)
+      echo -e "${BOLD}[${cmd}]${RST}"
+      _run_module "$cmd"
+      ;;
   esac
 }
 

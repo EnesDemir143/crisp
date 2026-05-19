@@ -28,3 +28,4 @@ __pycache__/
 .agents/
 skills-lock.json
 graphify-out/
+.omx/
