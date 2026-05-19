@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/EnesDemir143/crisp/compare/v1.0.0...v1.0.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* config toggle, OS filtering, orphans submenu, quick update +uv ([#4](https://github.com/EnesDemir143/crisp/issues/4)) ([b32df88](https://github.com/EnesDemir143/crisp/commit/b32df88416f1c7cdcd2e3af2ae5c160e2577cc9d))
+
 ## 1.0.0 (2026-05-19)
 
 
