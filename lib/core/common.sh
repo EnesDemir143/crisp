@@ -36,7 +36,10 @@ _module_desc() {
     uv) echo "uv self update + uv tool upgrade --all" ;;
     hermes) echo "hermes agent update" ;;
     repos) echo "fast-forward pull tracked local repos" ;;
+    ai-health) echo "AI toolkit health check (ML tools, GPU, CUDA compatibility)" ;;
+    radar) echo "deprecation radar for local tracked repos" ;;
     rollback) echo "rollback manager for crisp-updated binaries" ;;
+    orphans) echo "orphan binary detection and updates" ;;
     code) echo "VS Code extensions update" ;;
     cargo) echo "cargo installed tools" ;;
     *) echo "custom module" ;;

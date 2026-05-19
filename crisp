@@ -137,6 +137,11 @@ _show_help_screen() {
   echo -e "    ${CYN}crisp list${RST}                list modules"
   echo -e "    ${CYN}crisp update${RST}             self-update crisp"
   echo -e "    ${CYN}crisp setup-path${RST}         add crisp to PATH"
+  echo -e "    ${CYN}crisp scan-orphans${RST}       detect orphan binaries"
+  echo -e "    ${CYN}crisp check-orphans${RST}      compare orphan versions"
+  echo -e "    ${CYN}crisp update-orphans${RST}     update behind orphans"
+  echo -e "    ${CYN}crisp list-orphans${RST}       list tracked orphans"
+  echo -e "    ${CYN}crisp uninstall <n>${RST}      remove orphan from tracking"
   echo -e "    ${CYN}crisp --dry-run${RST}           preview without changes"
   section_header "KEYBOARD SHORTCUTS"
   echo -e "    ${CYN}↑/↓ or j/k${RST}    navigate menu"
@@ -549,6 +554,11 @@ _usage() {
   echo -e "    crisp list                list available modules"
   echo -e "    crisp update              self-update crisp"
   echo -e "    crisp setup-path          add crisp to PATH"
+  echo -e "    crisp scan-orphans        detect orphan binaries"
+  echo -e "    crisp check-orphans       compare orphan versions"
+  echo -e "    crisp update-orphans      update behind orphans"
+  echo -e "    crisp list-orphans        list tracked orphans"
+  echo -e "    crisp uninstall <name>    remove orphan from tracking"
   echo -e "    crisp --dry-run           preview without changes"
   echo -e "    crisp --help              show this message"
   echo -e "    crisp --version           show version"
@@ -697,7 +707,7 @@ main() {
   for arg in "$@"; do
     case "$arg" in
       --dry-run) dry_run=true ;;
-      *) cmd="$arg" ;;
+      *) [[ -z "$cmd" ]] && cmd="$arg" ;;
     esac
   done
 
@@ -729,8 +739,13 @@ main() {
     config) _show_config_picker ;;
     update) _crisp_update ;;
     setup-path) _crisp_setup_path ;;
-    rollback) source "$CRISP_DIR/lib/modules/rollback.sh" && _crisp_rollback_cmd "${@:2}" ;;
-    clean-backups) source "$CRISP_DIR/lib/modules/rollback.sh" && _crisp_clean_backups_cmd "${2:-}" ;;
+    scan-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_scan_orphans ;;
+    check-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_check_orphans ;;
+    update-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_update_orphans ;;
+    list-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_list_orphans ;;
+    uninstall) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_uninstall "$@" ;;
+    orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_orphans_menu "$2" ;;
+    ai-health) source "$CRISP_DIR/lib/modules/ai-health.sh" && _crisp_ai_health ;;
     "") _interactive_menu ;;
     *)
       echo -e "${BOLD}[${cmd}]${RST}"
