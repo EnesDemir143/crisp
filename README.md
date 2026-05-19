@@ -3,7 +3,9 @@
 **Keep everything crisp and up-to-date.**
 
 A cross-platform CLI tool that updates all your dev tools in one command.
-Beyond brew/pip/npm — crisp can also update local Git repositories you choose to track.
+Beyond brew/pip/npm — crisp can also update local Git repositories, AI agent
+skills, and CLI extensions in one go. Think of it as a universal package manager
+for the modern AI-augmented dev workflow.
 
 ## Quick Start
 
@@ -33,6 +35,50 @@ crisp list             # list available modules
 crisp --dry-run        # preview without changes
 crisp --help           # show help
 ```
+
+### Orphan Manager
+
+| Command | Description |
+|---------|-------------|
+| `crisp scan-orphans`   | Detect standalone binaries not managed by package managers |
+| `crisp check-orphans`  | Compare orphan versions against latest GitHub releases      |
+| `crisp update-orphans` | Batch-update all out-of-date orphans                        |
+| `crisp list-orphans`   | List all tracked orphan binaries                            |
+| `crisp uninstall <n>`  | Remove a binary from orphan tracking                        |
+
+### Deprecation Radar
+
+| Command | Description |
+|---------|-------------|
+| `crisp radar` | Scan tracked repos for abandonment signals and suggest alternatives |
+
+### Rollback Manager
+
+| Command | Description |
+|---------|-------------|
+| `crisp rollback --list` | List all available binary backups           |
+| `crisp rollback <name>` | Restore latest backup of a binary           |
+| `crisp clean-backups`   | Remove backups older than 30 days (default) |
+
+### AI Health Check
+
+| Command | Description |
+|---------|-------------|
+| `crisp ai-health` | AI toolkit health report (ML tools, GPU/CUDA compatibility) |
+
+### Interactive Config Picker
+
+| Command | Description |
+|---------|-------------|
+| `crisp config` | Interactive module picker (Space=toggle, Enter=save, q=cancel) |
+
+**Keybindings:**
+| Key | Action |
+|-----|--------|
+| `↑/↓` or `j/k` | Navigate modules |
+| `Space` | Toggle module on/off |
+| `Enter` | Save changes |
+| `q` or `Esc` | Cancel without saving |
 
 ### Keyboard Shortcuts (Interactive Menu)
 
@@ -111,7 +157,7 @@ make install-hooks # Install pre-commit hooks (shellcheck + shfmt + bats)
 - **Phase 1** ✅ — TUI fix, full-redraw, vim keybindings, bash 5.0+
 - **Phase 2** ✅ — Modular architecture, 12 modules, Bats tests, infrastructure
 - **Phase 3** — CI/CD pipeline, Makefile, install.sh, Homebrew formula
-- **Phase 4** — Orphan manager, deprecation radar, release notes, rollback
+- **Phase 4** 🚧 — Orphan manager, deprecation radar, rollback, AI health, config picker
 
 ## Contributing
 
