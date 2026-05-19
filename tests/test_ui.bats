@@ -12,7 +12,7 @@ setup() {
 # ─────────────────────────────────────────────────
 
 @test "read_key returns UP for ESC [ A" {
-  result=$(echo -e '\x1b[A' | /opt/homebrew/bin/bash -c "
+  result=$(echo -e '\x1b[A' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -21,7 +21,7 @@ setup() {
 }
 
 @test "read_key returns DOWN for ESC [ B" {
-  result=$(echo -e '\x1b[B' | /opt/homebrew/bin/bash -c "
+  result=$(echo -e '\x1b[B' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -30,7 +30,7 @@ setup() {
 }
 
 @test "read_key returns RIGHT for ESC [ C" {
-  result=$(echo -e '\x1b[C' | /opt/homebrew/bin/bash -c "
+  result=$(echo -e '\x1b[C' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -39,7 +39,7 @@ setup() {
 }
 
 @test "read_key returns LEFT for ESC [ D" {
-  result=$(echo -e '\x1b[D' | /opt/homebrew/bin/bash -c "
+  result=$(echo -e '\x1b[D' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -52,7 +52,7 @@ setup() {
 # ─────────────────────────────────────────────────
 
 @test "read_key returns DOWN for j" {
-  result=$(echo 'j' | /opt/homebrew/bin/bash -c "
+  result=$(echo 'j' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -61,7 +61,7 @@ setup() {
 }
 
 @test "read_key returns UP for k" {
-  result=$(echo 'k' | /opt/homebrew/bin/bash -c "
+  result=$(echo 'k' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -70,7 +70,7 @@ setup() {
 }
 
 @test "read_key returns QUIT for q" {
-  result=$(echo 'q' | /opt/homebrew/bin/bash -c "
+  result=$(echo 'q' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -79,7 +79,7 @@ setup() {
 }
 
 @test "read_key returns HELP for h" {
-  result=$(echo 'h' | /opt/homebrew/bin/bash -c "
+  result=$(echo 'h' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -88,7 +88,7 @@ setup() {
 }
 
 @test "read_key returns VERSION for v" {
-  result=$(echo 'v' | /opt/homebrew/bin/bash -c "
+  result=$(echo 'v' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -97,7 +97,7 @@ setup() {
 }
 
 @test "read_key returns TOP for g" {
-  result=$(echo 'g' | /opt/homebrew/bin/bash -c "
+  result=$(echo 'g' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -110,7 +110,7 @@ setup() {
 # ─────────────────────────────────────────────────
 
 @test "read_key returns NUM:1 for key 1" {
-  result=$(echo '1' | /opt/homebrew/bin/bash -c "
+  result=$(echo '1' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -119,7 +119,7 @@ setup() {
 }
 
 @test "read_key returns NUM:9 for key 9" {
-  result=$(echo '9' | /opt/homebrew/bin/bash -c "
+  result=$(echo '9' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key
@@ -132,7 +132,7 @@ setup() {
 # ─────────────────────────────────────────────────
 
 @test "read_key returns ENTER for empty input (newline)" {
-  result=$(echo '' | /opt/homebrew/bin/bash -c "
+  result=$(echo '' | bash -c "
     source '$CRISP_DIR/lib/core/base.sh'
     source '$CRISP_DIR/lib/core/ui.sh'
     read_key

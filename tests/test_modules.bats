@@ -118,7 +118,7 @@ setup() {
 
 @test "all module files pass bash syntax check" {
   for f in "$CRISP_MODULES_DIR"/*.sh; do
-    /opt/homebrew/bin/bash -n "$f" || {
+    bash -n "$f" || {
       echo "Syntax error in: $(basename "$f")"
       return 1
     }
