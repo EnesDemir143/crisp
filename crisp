@@ -68,7 +68,7 @@ trap cleanup EXIT INT TERM
 # ─────────────────────────────────────────────────
 MENU_ITEMS=(
   "all:Run All Updates:Run all modules sequentially"
-  "quick:Quick Update (brew/pip/npm):Update core package managers only"
+  "quick:Quick Update (brew/pip/npm/uv):Update core package managers only"
   "cron:Schedule Auto-Update:Schedule recurring auto-updates"
   "orphans:Orphan Manager:Detect and update standalone binaries"
   "config:Configure Modules:Choose which modules to run"
@@ -131,7 +131,7 @@ _show_help_screen() {
   section_header "USAGE"
   echo -e "    ${CYN}crisp${RST}                     interactive menu"
   echo -e "    ${CYN}crisp all${RST}                 run all enabled modules"
-  echo -e "    ${CYN}crisp quick${RST}               quick update (brew/pip/npm)"
+  echo -e "    ${CYN}crisp quick${RST}               quick update (brew/pip/npm/uv)"
   echo -e "    ${CYN}crisp <module>${RST}            run a specific module"
   echo -e "    ${CYN}crisp cron${RST}                schedule auto-update"
   echo -e "    ${CYN}crisp list${RST}                list modules"

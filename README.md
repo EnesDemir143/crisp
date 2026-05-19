@@ -1,11 +1,10 @@
 # crisp
 
-**Keep everything crisp and up-to-date.**
+**Keep everything up to date, in one command.**
 
-A cross-platform CLI tool that updates all your dev tools in one command.
-Beyond brew/pip/npm — crisp can also update local Git repositories, AI agent
-skills, and CLI extensions in one go. Think of it as a universal package manager
-for the modern AI-augmented dev workflow.
+A cross-platform CLI tool that updates all your dev tools — package managers,
+AI agent skills, VS Code extensions, local repos, and more — with a single
+interactive TUI or a quick CLI command.
 
 ## Quick Start
 
@@ -13,12 +12,8 @@ for the modern AI-augmented dev workflow.
 # macOS (Homebrew)
 brew install enesdemir/tap/crisp
 
-# Linux / WSL (one-liner)
+# Linux / WSL
 curl -fsSL https://raw.githubusercontent.com/EnesDemir143/crisp/main/install.sh | bash
-
-# Manual
-git clone https://github.com/EnesDemir143/crisp.git
-ln -s $(pwd)/crisp/crisp /usr/local/bin/crisp
 ```
 
 **Requirements:** Bash 5.0+ (`brew install bash` on macOS)
@@ -28,12 +23,12 @@ ln -s $(pwd)/crisp/crisp /usr/local/bin/crisp
 ```bash
 crisp                  # interactive TUI menu
 crisp all              # run all enabled modules
-crisp quick            # quick update (brew/pip/npm)
+crisp quick            # quick update (brew/apt/pip/npm/uv)
 crisp <module>         # run a specific module
 crisp cron             # schedule auto-update
+crisp config           # interactive module picker
 crisp list             # list available modules
 crisp --dry-run        # preview without changes
-crisp --help           # show help
 ```
 
 ### Orphan Manager
@@ -46,110 +41,98 @@ crisp --help           # show help
 | `crisp list-orphans`   | List all tracked orphan binaries                            |
 | `crisp uninstall <n>`  | Remove a binary from orphan tracking                        |
 
+From the interactive menu, `Orphan Manager` opens a submenu where you can select
+actions by number (1-6).
+
 ### Rollback Manager
 
 | Command | Description |
 |---------|-------------|
 | `crisp rollback --list` | List all available binary backups           |
 | `crisp rollback <name>` | Restore latest backup of a binary           |
-| `crisp clean-backups`   | Remove backups older than 30 days (default) |
+| `crisp clean-backups`   | Remove backups older than 30 days            |
 
-### Interactive Config Picker
+### Config Picker
 
-| Command | Description |
-|---------|-------------|
-| `crisp config` | Interactive module picker (Space=toggle, Enter=save, q=cancel) |
+`crisp config` opens an interactive module toggle screen. OS-incompatible
+modules (e.g. `apt` on macOS, `brew` on Linux) are automatically hidden.
 
-**Keybindings:**
 | Key | Action |
 |-----|--------|
-| `↑/↓` or `j/k` | Navigate modules |
+| `↑/↓` | Navigate |
 | `Space` | Toggle module on/off |
-| `Enter` | Save changes |
-| `q` or `Esc` | Cancel without saving |
+| `Enter` | Save and exit |
+| `q` / `Esc` | Cancel |
 
-### Keyboard Shortcuts (Interactive Menu)
+### Keyboard Shortcuts (Main Menu)
 
 | Key | Action |
 |-----|--------|
-| `↑/↓` or `j/k` | Navigate menu |
-| `Enter` | Select item |
+| `↑/↓` or `j/k` | Navigate |
+| `Enter` | Select |
 | `1-9` | Quick select by number |
 | `g` | Jump to top |
-| `v` | Version screen |
-| `h` | Help screen |
+| `v` | Version info |
+| `h` | Help |
 | `q` | Quit |
 
 ## Modules
 
-| Module | What it does | Platform |
-|--------|-------------|----------|
-| `brew` | `brew update + brew upgrade` | macOS |
-| `apt` | `apt update && apt upgrade` | Linux |
+| Module | Description | OS |
+|--------|-------------|----|
+| `brew` | brew update + brew upgrade | macOS |
+| `apt` | apt update && apt upgrade | Linux |
 | `pip` | pip self-upgrade + outdated packages | All |
-| `pipx` | `pipx upgrade-all` | All |
+| `pipx` | pipx upgrade-all | All |
 | `npm` | npm self-update + global packages | All |
 | `npx` | Clear npx cache | All |
-| `uv` | `uv self update + uv tool upgrade --all` | All |
-| `cargo` | `cargo install-update -a` | All |
+| `uv` | uv self update + uv tool upgrade --all | All |
+| `cargo` | cargo install-update -a | All |
 | `hermes` | Hermes Agent update | All |
+| `graphify` | graphify version check & update | All |
 | `code` | VS Code extensions update | All |
-| `repos` | Fast-forward pull local tracked repos | All |
-| `graphify` | graphify version check | All |
+| `repos` | Fast-forward pull tracked local repos | All |
+| `orphans` | Orphan binary detection & update | All |
+| `radar` | Deprecation radar for local repos | All |
+| `rollback` | Backup & restore binary versions | All |
+| `ai-health` | AI toolkit health check (ML tools, GPU) | All |
 
 ## Configuration
 
-crisp reads `~/.config/crisp/crisp.conf`:
+`~/.config/crisp/crisp.conf`:
 
 ```bash
-# List of modules to run (space-separated)
-CRISP_MODULES="graphify brew pip npm hermes repos"
+CRISP_MODULES="graphify brew pip pipx npm npx uv hermes repos code cargo"
 ```
 
 ## Project Structure
 
 ```
 crisp/
-├── crisp                    # Main CLI (thin orchestrator)
+├── crisp                    # Main CLI
 ├── lib/
 │   ├── core/
-│   │   ├── base.sh          # Colors, icons, OS detection, XDG paths
-│   │   ├── ui.sh            # read_key, draw_menu, spinners, format helpers
-│   │   └── common.sh        # Module runner, error isolation
-│   └── modules/
-│       ├── brew.sh          # macOS Homebrew
-│       ├── apt.sh           # Linux apt
-│       ├── pip.sh           # Python pip
-│       └── ...              # 12 modules total
-├── tests/
-│   ├── test_ui.bats         # Key handling tests
-│   ├── test_modules.bats    # Module loading tests
-│   └── test_cron.bats       # Cron expression tests
-├── .editorconfig
-├── .shellcheckrc
-├── LICENSE                  # MIT
-├── CONTRIBUTING.md
-└── SECURITY.md
+│   │   ├── base.sh          # OS detection, colors, icons, XDG paths
+│   │   ├── ui.sh            # Terminal control, read_key, draw primitives
+│   │   ├── common.sh        # Module runner, discovery, release notes
+│   │   └── recipes.sh       # Trusted update recipes
+│   └── modules/             # 16 update modules
+│       ├── brew.sh apt.sh pip.sh pipx.sh npm.sh npx.sh
+│       ├── uv.sh cargo.sh code.sh hermes.sh graphify.sh
+│       ├── repos.sh orphans.sh radar.sh rollback.sh
+│       └── ai-health.sh
+├── tests/                   # 61 Bats tests
+├── completions/             # bash/zsh/fish/powershell
+├── Formula/                 # Homebrew formula
+└── install.sh               # One-liner installer
 ```
 
 ## Development
 
 ```bash
-make test          # Run Bats tests (47 tests)
+make test          # Run Bats tests (61 tests)
 make lint          # ShellCheck all .sh files
-make install-hooks # Install pre-commit hooks (shellcheck + shfmt + bats)
 ```
-
-## Roadmap
-
-- **Phase 1** ✅ — TUI fix, full-redraw, vim keybindings, bash 5.0+
-- **Phase 2** ✅ — Modular architecture, 12 modules, Bats tests, infrastructure
-- **Phase 3** — CI/CD pipeline, Makefile, install.sh, Homebrew formula
-- **Phase 4** 🚧 — Orphan manager, rollback, config picker
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add modules, run tests, and submit PRs.
 
 ## License
 

@@ -209,13 +209,13 @@ _run_all_modules() {
   echo
 }
 
-# Quick update: only brew/pip/npm
+# Quick update: core package managers
 _run_quick_update() {
   clear_screen
   echo
   echo -e "  ${BOLD}${BCYN}crisp quick${RST} ${BOLD}— core package update${RST}"
   echo
-  for m in brew apt pip npm; do
+  for m in brew apt pip npm uv; do
     if echo "$CRISP_MODULES" | grep -qw "$m"; then _run_module "$m"; fi
   done
   echo
