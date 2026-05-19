@@ -46,12 +46,6 @@ crisp --help           # show help
 | `crisp list-orphans`   | List all tracked orphan binaries                            |
 | `crisp uninstall <n>`  | Remove a binary from orphan tracking                        |
 
-### Deprecation Radar
-
-| Command | Description |
-|---------|-------------|
-| `crisp radar` | Scan tracked repos for abandonment signals and suggest alternatives |
-
 ### Rollback Manager
 
 | Command | Description |
@@ -151,7 +145,7 @@ make install-hooks # Install pre-commit hooks (shellcheck + shfmt + bats)
 - **Phase 1** ✅ — TUI fix, full-redraw, vim keybindings, bash 5.0+
 - **Phase 2** ✅ — Modular architecture, 12 modules, Bats tests, infrastructure
 - **Phase 3** — CI/CD pipeline, Makefile, install.sh, Homebrew formula
-- **Phase 4** 🚧 — Orphan manager, deprecation radar, rollback, AI health, config picker
+- **Phase 4** 🚧 — Orphan manager, rollback, config picker
 
 ## Contributing
 

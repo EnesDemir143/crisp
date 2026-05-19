@@ -72,7 +72,6 @@ MENU_ITEMS=(
   "repos:Local Repo Status:Check git status of local repositories"
   "cron:Schedule Auto-Update:Schedule recurring auto-updates"
   "orphans:Orphan Manager:Detect and update standalone binaries"
-  "radar:Deprecation Radar:Find abandoned repositories"
   "config:Configure Modules:Choose which modules to run"
   "help:Help & About:Help and version info"
 )
@@ -146,7 +145,6 @@ _show_help_screen() {
   echo -e "    ${CYN}crisp uninstall <n>${RST}      remove orphan from tracking"
   echo -e "    ${CYN}crisp rollback [--list|<name>]${RST}  restore backed-up binary versions"
   echo -e "    ${CYN}crisp clean-backups [--all]${RST}   remove old backups"
-  echo -e "    ${CYN}crisp radar${RST}                deprecation radar scan"
   echo -e "    ${CYN}crisp --dry-run${RST}           preview without changes"
   section_header "KEYBOARD SHORTCUTS"
   echo -e "    ${CYN}↑/↓ or j/k${RST}    navigate menu"
@@ -293,7 +291,9 @@ _save_config_modules() {
 _show_config_picker() {
   local -a all_modules
   while IFS= read -r f; do
-    all_modules+=("$(basename "$f" .sh)")
+    local m
+    m="$(basename "$f" .sh)"
+    _module_is_available "$m" && all_modules+=("$m")
   done < <(find "$CRISP_MODULES_DIR" -maxdepth 1 -name '*.sh' 2>/dev/null | sort)
 
   local -a enabled
@@ -304,20 +304,27 @@ _show_config_picker() {
   done
 
   local sel=0 n="${#all_modules[@]}"
+  local m desc toggle found new_modules
+  local -a new_enabled
+  local -i i
+
+  clear_screen
+  hide_cursor
+
   while true; do
-    clear_screen
+    cursor_home
+    _draw_header
+    _draw_divider
     section_header "${BCYN}crisp config${RST} — interactive module picker"
     _draw_divider
     echo
     echo -e "  ${DIM}Toggle modules with Space, save with Enter${RST}"
     echo
 
-    local m desc toggle
-    local -i i
     for ((i = 0; i < n; i++)); do
       m="${all_modules[$i]}"
       desc="$(_module_desc "$m")"
-      if echo "${enabled[*]}" | grep -qw "$m"; then
+      if echo " ${enabled[*]} " | grep -q " ${m} "; then
         toggle="${GRN}${ICO_CHECK}${RST}"
       else
         toggle="${DIM}${ICO_CROSS}${RST}"
@@ -336,16 +343,17 @@ _show_config_picker() {
     _draw_divider
     printf '\r\033[2K'
     echo -e "  ${DIM}↑/↓: navigate  •  Space: toggle  •  Enter: save  •  q: cancel${RST}"
+    clear_to_end
 
     local key
     key="$(read_key)"
     case "$key" in
       UP) sel=$(((sel - 1 + n) % n)) ;;
       DOWN) sel=$(((sel + 1) % n)) ;;
-      "CHAR:\ ")
+      "CHAR: ")
         m="${all_modules[$sel]}"
-        local found=false
-        local -a new_enabled
+        found=false
+        new_enabled=()
         for e in "${enabled[@]}"; do
           if [[ "$e" == "$m" ]]; then
             found=true
@@ -353,7 +361,7 @@ _show_config_picker() {
             new_enabled+=("$e")
           fi
         done
-        if [[ "$found" == "false" ]]; then
+        if [[ "$found" != "true" ]]; then
           new_enabled=("${enabled[@]}" "$m")
         fi
         enabled=("${new_enabled[@]}")
@@ -395,7 +403,6 @@ _dispatch_menu() {
       ;;
     cron) _menu_cron_schedule ;;
     orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_orphans_menu "" ;;
-    radar) source "$CRISP_DIR/lib/modules/radar.sh" && _crisp_run_radar ;;
     config) _show_config_picker ;;
     help) _show_help_screen ;;
     *) echo -e "${RED}Unknown action: ${id}${RST}" ;;
@@ -615,7 +622,6 @@ _usage() {
   echo -e "    crisp uninstall <name>    remove orphan from tracking"
   echo -e "    crisp rollback [--list|<name>]  restore backed-up binary versions"
   echo -e "    crisp clean-backups [--all]   remove old backups"
-  echo -e "    crisp radar                deprecation radar scan"
   echo -e "    crisp --dry-run           preview without changes"
   echo -e "    crisp --help              show this message"
   echo -e "    crisp --version           show version"
@@ -802,7 +808,6 @@ main() {
     list-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_list_orphans ;;
     uninstall) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_uninstall "$@" ;;
     orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_orphans_menu "$2" ;;
-    radar) source "$CRISP_DIR/lib/modules/radar.sh" && _crisp_run_radar ;;
     "") _interactive_menu ;;
     *)
       echo -e "${BOLD}[${cmd}]${RST}"
