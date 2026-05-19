@@ -745,6 +745,7 @@ main() {
     list-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_list_orphans ;;
     uninstall) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_uninstall "$@" ;;
     orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_orphans_menu "$2" ;;
+    radar) source "$CRISP_DIR/lib/modules/radar.sh" && _crisp_run_radar ;;
     ai-health) source "$CRISP_DIR/lib/modules/ai-health.sh" && _crisp_ai_health ;;
     "") _interactive_menu ;;
     *)
