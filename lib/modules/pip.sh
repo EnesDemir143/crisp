@@ -5,7 +5,6 @@
 [[ -n "${CRISP_MOD_PIP_LOADED:-}" ]] && return 0
 readonly CRISP_MOD_PIP_LOADED=1
 
-
 crisp_pip_run() {
   echo "  → Pip upgrade..."
   pip3 install --upgrade pip -q 2>/dev/null || true

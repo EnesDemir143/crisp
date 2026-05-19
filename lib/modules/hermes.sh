@@ -5,7 +5,6 @@
 [[ -n "${CRISP_MOD_HERMES_LOADED:-}" ]] && return 0
 readonly CRISP_MOD_HERMES_LOADED=1
 
-
 crisp_hermes_run() {
   if ! command -v hermes &>/dev/null; then
     echo "    ⚠ hermes not found, skipping"

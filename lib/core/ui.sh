@@ -50,36 +50,44 @@ clear_to_end() { printf '\033[J'; }
 read_key() {
   local key
   IFS= read -r -s -n 1 key
-  if [[ $? -ne 0 ]]; then echo "QUIT"; return; fi
+  if [[ $? -ne 0 ]]; then
+    echo "QUIT"
+    return
+  fi
 
   case "$key" in
     $'\x1b')
       # ESC detected — read next byte with 0.5s timeout
       local b1
       IFS= read -r -s -n 1 -t 0.5 b1
-      if [[ -z "$b1" ]]; then echo "ESC"; return; fi
+      if [[ -z "$b1" ]]; then
+        echo "ESC"
+        return
+      fi
       case "$b1" in
-        '['|O)
+        '[' | O)
           # CSI or SS3 sequence — read the final byte
           local b2
           IFS= read -r -s -n 1 -t 0.5 b2
           case "$b2" in
-            A) echo "UP"    ;;
-            B) echo "DOWN"  ;;
+            A) echo "UP" ;;
+            B) echo "DOWN" ;;
             C) echo "RIGHT" ;;
-            D) echo "LEFT"  ;;
-            *) echo "ESC"   ;;
-          esac ;;
+            D) echo "LEFT" ;;
+            *) echo "ESC" ;;
+          esac
+          ;;
         *) echo "ESC" ;;
-      esac ;;
-    '')  echo "ENTER" ;;
-    q|Q) echo "QUIT"  ;;
-    v|V) echo "VERSION" ;;
-    h|H) echo "HELP"  ;;
-    j|J) echo "DOWN"  ;;
-    k|K) echo "UP"    ;;
-    g|G) echo "TOP"   ;;
-    l|L) echo "CLEAR" ;;
+      esac
+      ;;
+    '') echo "ENTER" ;;
+    q | Q) echo "QUIT" ;;
+    v | V) echo "VERSION" ;;
+    h | H) echo "HELP" ;;
+    j | J) echo "DOWN" ;;
+    k | K) echo "UP" ;;
+    g | G) echo "TOP" ;;
+    l | L) echo "CLEAR" ;;
     [1-9]) echo "NUM:$key" ;;
     *) echo "CHAR:$key" ;;
   esac
@@ -134,7 +142,7 @@ _max_display_width() {
   while IFS= read -r line; do
     width="$(_display_width "$line")"
     [[ "$width" -gt "$max" ]] && max="$width"
-  done <<< "$text"
+  done <<<"$text"
   printf '%s\n' "$max"
 }
 
@@ -154,7 +162,8 @@ _draw_header() {
       title="crisp"
       ;;
     *)
-      title=$(cat <<'ASCIITITLE'
+      title=$(
+        cat <<'ASCIITITLE'
  ██████╗██████╗ ██╗███████╗██████╗
 ██╔════╝██╔══██╗██║██╔════╝██╔══██╗
 ██║     ██████╔╝██║███████╗██████╔╝
@@ -175,7 +184,7 @@ ASCIITITLE
       width="$(_display_width "$line")"
       _CRISP_HEADER_LINE_WIDTHS+=("$width")
       [[ "$width" -gt "$max" ]] && max="$width"
-    done <<< "$title"
+    done <<<"$title"
     _CRISP_HEADER_ART_WIDTH="$max"
   fi
 
@@ -194,11 +203,11 @@ ASCIITITLE
   local pad i=0
   while IFS= read -r line; do
     local line_w="${line_widths[$i]:-$(_display_width "$line")}"
-    pad=$(( (w - line_w) / 2 ))
+    pad=$(((w - line_w) / 2))
     [[ $pad -lt 0 ]] && pad=0
     _print_cleared_line "$pad" "$BCYN" "$line" "$RST"
     i=$((i + 1))
-  done <<< "$title"
+  done <<<"$title"
 
   # Tagline shifted 4 chars right from center
   local tag_w
@@ -207,7 +216,7 @@ ASCIITITLE
     _CRISP_TAGLINE_CACHE_WIDTH="$(_display_width "$CRISP_TAGLINE")"
   fi
   tag_w="${_CRISP_TAGLINE_CACHE_WIDTH:-$(_display_width "$CRISP_TAGLINE")}"
-  local tpad=$(( (w - tag_w) / 2 + 4 ))
+  local tpad=$(((w - tag_w) / 2 + 4))
   [[ $tpad -lt 0 ]] && tpad=0
   _print_cleared_line "$tpad" "$DIM" "$CRISP_TAGLINE" "$RST"
   printf '\r\033[2K\n'
@@ -240,7 +249,7 @@ _draw_footer() {
 _draw_menu_items() {
   local sel="${1:-0}" n
   n="${#MENU_ITEMS[@]}"
-  for ((i=0; i<n; i++)); do
+  for ((i = 0; i < n; i++)); do
     local num=$((i + 1))
     local title desc
     title="$(_get_menu_item "$i" title)"
@@ -272,7 +281,8 @@ _draw_menu_items() {
 # Usage: spin "Loading..." command args...
 # Runs command in background, shows spinner until done.
 spin() {
-  local msg="$1"; shift
+  local msg="$1"
+  shift
   local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
   local i=0
 
@@ -281,13 +291,13 @@ spin() {
 
   while kill -0 "$pid" 2>/dev/null; do
     printf "\r  ${CYN}%s${RST} %s" "${frames[$i]}" "$msg"
-    i=$(( (i + 1) % ${#frames[@]} ))
+    i=$(((i + 1) % ${#frames[@]}))
     sleep 0.1
   done
 
   wait "$pid"
   local exit_code=$?
-  printf "\r\033[K"  # Clear spinner line
+  printf "\r\033[K" # Clear spinner line
   return $exit_code
 }
 
@@ -300,7 +310,7 @@ _spinner_start() {
 
 _spinner_tick() {
   printf "\r  ${CYN}%s${RST}" "${_SPINNER_FRAMES[$_SPINNER_I]}"
-  _SPINNER_I=$(( (_SPINNER_I + 1) % ${#_SPINNER_FRAMES[@]} ))
+  _SPINNER_I=$(((_SPINNER_I + 1) % ${#_SPINNER_FRAMES[@]}))
 }
 
 _spinner_stop() {
@@ -313,9 +323,9 @@ _spinner_stop() {
 
 # Format a status line with icon
 # Usage: status_ok "message" / status_warn "message" / status_err "message"
-status_ok()   { echo -e "  ${GRN}${ICO_OK}${RST} $1"; }
+status_ok() { echo -e "  ${GRN}${ICO_OK}${RST} $1"; }
 status_warn() { echo -e "  ${YEL}${ICO_WARN}${RST} $1"; }
-status_err()  { echo -e "  ${RED}${ICO_ERR}${RST} $1"; }
+status_err() { echo -e "  ${RED}${ICO_ERR}${RST} $1"; }
 status_info() { echo -e "  ${CYN}${ICO_ARROW}${RST} $1"; }
 
 # Format a key-value pair

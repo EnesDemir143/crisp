@@ -26,19 +26,19 @@ _module_count() {
 _module_desc() {
   case "$1" in
     graphify) echo "Update graphify (knowledge graph + version)" ;;
-    brew)     echo "brew update + brew upgrade" ;;
-    apt)      echo "apt update && apt upgrade (Linux)" ;;
-    pacman)   echo "pacman -Syu (Arch Linux)" ;;
-    pip)      echo "pip self-upgrade + outdated packages" ;;
-    pipx)     echo "pipx upgrade-all" ;;
-    npm)      echo "npm self-update + global packages" ;;
-    npx)      echo "clear npx cache" ;;
-    uv)       echo "uv self update + uv tool upgrade --all" ;;
-    hermes)   echo "hermes agent update" ;;
-    repos)    echo "fast-forward pull tracked local repos" ;;
-    code)     echo "VS Code extensions update" ;;
-    cargo)    echo "cargo installed tools" ;;
-    *)        echo "custom module" ;;
+    brew) echo "brew update + brew upgrade" ;;
+    apt) echo "apt update && apt upgrade (Linux)" ;;
+    pacman) echo "pacman -Syu (Arch Linux)" ;;
+    pip) echo "pip self-upgrade + outdated packages" ;;
+    pipx) echo "pipx upgrade-all" ;;
+    npm) echo "npm self-update + global packages" ;;
+    npx) echo "clear npx cache" ;;
+    uv) echo "uv self update + uv tool upgrade --all" ;;
+    hermes) echo "hermes agent update" ;;
+    repos) echo "fast-forward pull tracked local repos" ;;
+    code) echo "VS Code extensions update" ;;
+    cargo) echo "cargo installed tools" ;;
+    *) echo "custom module" ;;
   esac
 }
 
@@ -59,7 +59,8 @@ _all_available_modules() {
 # Usage: _run_module <name> [silent]
 _run_module() {
   local name="$1" silent="${2:-false}"
-  local path; path="$(_module_path "$name")"
+  local path
+  path="$(_module_path "$name")"
 
   if [[ ! -f "$path" ]]; then
     [[ "$silent" != "true" ]] && echo -e "  ${RED}${ICO_ERR} Module '${name}' not found${RST}"
@@ -68,7 +69,8 @@ _run_module() {
 
   # Dry-run mode — show what WOULD happen
   if [[ "${CRISP_DRY_RUN:-false}" == "true" ]]; then
-    local desc; desc="$(_module_desc "$name")"
+    local desc
+    desc="$(_module_desc "$name")"
     echo -e "  ${CYN}[${name}]${RST} ${DIM}→ would run: ${desc}${RST}"
     return 0
   fi
@@ -92,26 +94,30 @@ _run_module() {
 
 # Run all enabled modules sequentially
 _run_all_modules() {
-  clear_screen; echo
+  clear_screen
+  echo
   if [[ "${CRISP_DRY_RUN:-false}" == "true" ]]; then
     echo -e "  ${BOLD}${BYEL}crisp${RST} ${BOLD}— dry-run mode (no changes)${RST} ${DIM}$(date '+%H:%M')${RST}"
   else
     echo -e "  ${BOLD}${BCYN}crisp${RST} ${BOLD}— starting updates...${RST} ${DIM}$(date '+%H:%M')${RST}"
   fi
-  _draw_divider; echo
+  _draw_divider
+  echo
 
-  local start_time; start_time=$(date +%s)
+  local start_time
+  start_time=$(date +%s)
   local ran=0 failed=0 total
   total="$(_module_count)"
 
   for m in $CRISP_MODULES; do
     if [[ -f "$(_module_path "$m")" ]]; then
-      if _run_module "$m"; then ran=$((ran + 1))
+      if _run_module "$m"; then
+        ran=$((ran + 1))
       else failed=$((failed + 1)); fi
     fi
   done
 
-  local elapsed=$(( $(date +%s) - start_time ))
+  local elapsed=$(($(date +%s) - start_time))
   echo
   _draw_divider
   if [[ $failed -eq 0 ]]; then
@@ -124,8 +130,10 @@ _run_all_modules() {
 
 # Quick update: only brew/pip/npm
 _run_quick_update() {
-  clear_screen; echo
-  echo -e "  ${BOLD}${BCYN}crisp quick${RST} ${BOLD}— core package update${RST}"; echo
+  clear_screen
+  echo
+  echo -e "  ${BOLD}${BCYN}crisp quick${RST} ${BOLD}— core package update${RST}"
+  echo
   for m in brew apt pip npm; do
     if echo "$CRISP_MODULES" | grep -qw "$m"; then _run_module "$m"; fi
   done

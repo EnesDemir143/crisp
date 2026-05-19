@@ -5,7 +5,6 @@
 [[ -n "${CRISP_MOD_UV_LOADED:-}" ]] && return 0
 readonly CRISP_MOD_UV_LOADED=1
 
-
 crisp_uv_run() {
   if ! command -v uv &>/dev/null; then
     echo "    ⚠ uv not found, skipping"

@@ -5,7 +5,6 @@
 [[ -n "${CRISP_MOD_GRAPHIFY_LOADED:-}" ]] && return 0
 readonly CRISP_MOD_GRAPHIFY_LOADED=1
 
-
 crisp_graphify_run() {
   echo "  → Updating graphify..."
 

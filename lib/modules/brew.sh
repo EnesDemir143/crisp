@@ -7,8 +7,6 @@ readonly CRISP_MOD_BREW_LOADED=1
 # macOS only
 [[ "${CRISP_OS:-unknown}" != "macos" ]] && return 0
 
-
-
 crisp_brew_run() {
   echo "  → Brew update..."
   brew update 2>&1 | tail -1

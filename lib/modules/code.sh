@@ -5,7 +5,6 @@
 [[ -n "${CRISP_MOD_CODE_LOADED:-}" ]] && return 0
 readonly CRISP_MOD_CODE_LOADED=1
 
-
 crisp_code_run() {
   if ! command -v code &>/dev/null; then
     echo "    ⚠ VS Code (code CLI) not found, skipping"

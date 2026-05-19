@@ -5,7 +5,6 @@
 [[ -n "${CRISP_MOD_PIPX_LOADED:-}" ]] && return 0
 readonly CRISP_MOD_PIPX_LOADED=1
 
-
 crisp_pipx_run() {
   if ! command -v pipx &>/dev/null; then
     echo "    ⚠ pipx not found, skipping"

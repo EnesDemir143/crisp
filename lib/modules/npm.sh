@@ -5,7 +5,6 @@
 [[ -n "${CRISP_MOD_NPM_LOADED:-}" ]] && return 0
 readonly CRISP_MOD_NPM_LOADED=1
 
-
 crisp_npm_run() {
   echo "  → Npm self-update..."
   npm install -g npm 2>&1 | tail -1 || true

@@ -9,11 +9,11 @@ readonly CRISP_BASE_LOADED=1
 # ─────────────────────────────────────────────────
 detect_os() {
   case "$(uname -s)" in
-    Darwin)          echo "macos" ;;
-    Linux*)          echo "linux" ;;
-    MINGW*|MSYS*)   echo "windows" ;;
-    CYGWIN*)         echo "windows" ;;
-    *)               echo "unknown" ;;
+    Darwin) echo "macos" ;;
+    Linux*) echo "linux" ;;
+    MINGW* | MSYS*) echo "windows" ;;
+    CYGWIN*) echo "windows" ;;
+    *) echo "unknown" ;;
   esac
 }
 
@@ -108,8 +108,9 @@ term_height() { tput lines 2>/dev/null || echo 24; }
 # Usage: center_str "text" [width]
 center_str() {
   local text="$1" w="${2:-$(term_width)}"
-  local stripped; stripped="$(echo -e "$text" | sed 's/\x1b\[[0-9;]*m//g')"
-  local pad=$(( (w - ${#stripped}) / 2 ))
+  local stripped
+  stripped="$(echo -e "$text" | sed 's/\x1b\[[0-9;]*m//g')"
+  local pad=$(((w - ${#stripped}) / 2))
   [[ $pad -lt 0 ]] && pad=0
   printf "%${pad}s%s" "" "$text"
 }

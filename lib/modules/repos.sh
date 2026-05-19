@@ -29,8 +29,8 @@ crisp_repos_scan_local() {
     -not -path "*/.hermes/hermes-agent/*" \
     -not -path "*/go/pkg/*" \
     2>/dev/null | while IFS= read -r d; do
-      dirname "$d"
-    done | sort -u > "$CRISP_REPO_CACHE"
+    dirname "$d"
+  done | sort -u >"$CRISP_REPO_CACHE"
 }
 
 crisp_repos_list_configured() {
@@ -66,20 +66,20 @@ crisp_repos_update_one() {
   }
 
   output=$(git -C "$repo" pull --ff-only 2>&1)
-  if grep -q "Already up to date" <<< "$output"; then
+  if grep -q "Already up to date" <<<"$output"; then
     echo "      ✓ up to date (${upstream})"
     return 0
   fi
 
-  if grep -q "Fast-forward\|Updating" <<< "$output"; then
+  if grep -q "Fast-forward\|Updating" <<<"$output"; then
     local summary
-    summary=$(head -3 <<< "$output" | tr '\n' ' ')
+    summary=$(head -3 <<<"$output" | tr '\n' ' ')
     echo "      ⬆  ${summary:0:100}"
     return 1
   fi
 
   local err_line
-  err_line=$(head -1 <<< "$output")
+  err_line=$(head -1 <<<"$output")
   echo "      ⚠  ${err_line:0:80}"
   return 4
 }
@@ -113,7 +113,7 @@ crisp_repos_run() {
     case "$result" in
       0) current=$((current + 1)) ;;
       1) updated=$((updated + 1)) ;;
-      2|3) skipped=$((skipped + 1)) ;;
+      2 | 3) skipped=$((skipped + 1)) ;;
       *) failed=$((failed + 1)) ;;
     esac
   done
