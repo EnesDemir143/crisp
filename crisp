@@ -71,6 +71,9 @@ MENU_ITEMS=(
   "quick:Quick Update (brew/pip/npm):Update core package managers only"
   "repos:Local Repo Status:Check git status of local repositories"
   "cron:Schedule Auto-Update:Schedule recurring auto-updates"
+  "orphans:Orphan Manager:Detect and update standalone binaries"
+  "radar:Deprecation Radar:Find abandoned repositories"
+  "ai-health:AI Health Check:ML tools, GPU, CUDA compatibility"
   "config:Configure Modules:Choose which modules to run"
   "help:Help & About:Help and version info"
 )
@@ -137,6 +140,15 @@ _show_help_screen() {
   echo -e "    ${CYN}crisp list${RST}                list modules"
   echo -e "    ${CYN}crisp update${RST}             self-update crisp"
   echo -e "    ${CYN}crisp setup-path${RST}         add crisp to PATH"
+  echo -e "    ${CYN}crisp scan-orphans${RST}       detect orphan binaries"
+  echo -e "    ${CYN}crisp check-orphans${RST}      compare orphan versions"
+  echo -e "    ${CYN}crisp update-orphans${RST}     update behind orphans"
+  echo -e "    ${CYN}crisp list-orphans${RST}       list tracked orphans"
+  echo -e "    ${CYN}crisp uninstall <n>${RST}      remove orphan from tracking"
+  echo -e "    ${CYN}crisp rollback [--list|<name>]${RST}  restore backed-up binary versions"
+  echo -e "    ${CYN}crisp clean-backups [--all]${RST}   remove old backups"
+  echo -e "    ${CYN}crisp ai-health${RST}            AI toolkit health report"
+  echo -e "    ${CYN}crisp radar${RST}                deprecation radar scan"
   echo -e "    ${CYN}crisp --dry-run${RST}           preview without changes"
   section_header "KEYBOARD SHORTCUTS"
   echo -e "    ${CYN}↑/↓ or j/k${RST}    navigate menu"
@@ -213,6 +225,164 @@ _show_config_screen() {
 }
 
 # ─────────────────────────────────────────────────
+# T21: Config picker — interactive module toggle UI
+# ─────────────────────────────────────────────────
+_save_config_modules() {
+  local new_modules="$1"
+
+  # Validation: at least 1 module enabled
+  if [[ -z "${new_modules// /}" ]]; then
+    echo -e "  ${RED}${ICO_ERR} Error: at least one module must be enabled${RST}" >&2
+    return 1
+  fi
+
+  # Validation: every module must have a corresponding file
+  local m
+  for m in $new_modules; do
+    if [[ ! -f "$CRISP_MODULES_DIR/$m.sh" ]]; then
+      echo -e "  ${RED}${ICO_ERR} Error: module '${m}' has no file in lib/modules/${RST}" >&2
+      return 1
+    fi
+  done
+
+  local dir
+  dir="$(dirname "$CRISP_CONF")"
+  mkdir -p "$dir" 2>/dev/null
+
+  # Check writability
+  if [[ ! -d "$dir" ]] || [[ ! -w "$dir" ]]; then
+    echo -e "  ${RED}${ICO_ERR} Error: config directory '${dir}' is not writable${RST}" >&2
+    return 1
+  fi
+
+  # Timestamped backup if config exists
+  if [[ -f "$CRISP_CONF" ]]; then
+    local backup="${CRISP_CONF}.bak.$(date +%Y%m%d%H%M%S)"
+    cp "$CRISP_CONF" "$backup" || {
+      echo -e "  ${RED}${ICO_ERR} Error: failed to create backup${RST}" >&2
+      return 1
+    }
+  fi
+
+  # Atomic write: temp file first, then mv
+  local tmp
+  tmp="$(mktemp "${CRISP_CONF}.tmp.XXXXXX")"
+
+  if [[ -f "$CRISP_CONF" ]]; then
+    if grep -q "^CRISP_MODULES=" "$CRISP_CONF" 2>/dev/null; then
+      if [[ "$CRISP_OS" == "macos" ]]; then
+        sed "s/^CRISP_MODULES=.*/CRISP_MODULES=\"${new_modules}\"/" "$CRISP_CONF" >"$tmp"
+      else
+        sed "s/^CRISP_MODULES=.*/CRISP_MODULES=\"${new_modules}\"/" "$CRISP_CONF" >"$tmp"
+      fi
+    else
+      cp "$CRISP_CONF" "$tmp"
+      echo "CRISP_MODULES=\"${new_modules}\"" >>"$tmp"
+    fi
+  else
+    echo "CRISP_MODULES=\"${new_modules}\"" >"$tmp"
+  fi
+
+  mv "$tmp" "$CRISP_CONF" || {
+    echo -e "  ${RED}${ICO_ERR} Error: failed to write config${RST}" >&2
+    rm -f "$tmp"
+    return 1
+  }
+
+  CRISP_MODULES="$new_modules"
+}
+
+_show_config_picker() {
+  local -a all_modules
+  while IFS= read -r f; do
+    all_modules+=("$(basename "$f" .sh)")
+  done < <(find "$CRISP_MODULES_DIR" -maxdepth 1 -name '*.sh' 2>/dev/null | sort)
+
+  local -a enabled
+  for m in "${all_modules[@]}"; do
+    if echo " $CRISP_MODULES " | grep -q " $m "; then
+      enabled+=("$m")
+    fi
+  done
+
+  local sel=0 n="${#all_modules[@]}"
+  while true; do
+    clear_screen
+    section_header "${BCYN}crisp config${RST} — interactive module picker"
+    _draw_divider
+    echo
+    echo -e "  ${DIM}Toggle modules with Space, save with Enter${RST}"
+    echo
+
+    local m desc toggle
+    local -i i
+    for ((i = 0; i < n; i++)); do
+      m="${all_modules[$i]}"
+      desc="$(_module_desc "$m")"
+      if echo "${enabled[*]}" | grep -qw "$m"; then
+        toggle="${GRN}${ICO_CHECK}${RST}"
+      else
+        toggle="${DIM}${ICO_CROSS}${RST}"
+      fi
+
+      if [[ $i -eq $sel ]]; then
+        printf '\r\033[2K'
+        echo -e "  ${BCYN}${ICO_ARROW}${RST} ${toggle} ${CYN}${m}${RST} ${DIM}— ${desc}${RST}"
+      else
+        printf '\r\033[2K'
+        echo -e "    ${toggle} ${m} ${DIM}— ${desc}${RST}"
+      fi
+    done
+
+    echo
+    _draw_divider
+    printf '\r\033[2K'
+    echo -e "  ${DIM}↑/↓: navigate  •  Space: toggle  •  Enter: save  •  q: cancel${RST}"
+
+    local key
+    key="$(read_key)"
+    case "$key" in
+      UP) sel=$(((sel - 1 + n) % n)) ;;
+      DOWN) sel=$(((sel + 1) % n)) ;;
+      "CHAR:\ ")
+        m="${all_modules[$sel]}"
+        local found=false
+        local -a new_enabled
+        for e in "${enabled[@]}"; do
+          if [[ "$e" == "$m" ]]; then
+            found=true
+          else
+            new_enabled+=("$e")
+          fi
+        done
+        if [[ "$found" == "false" ]]; then
+          new_enabled=("${enabled[@]}" "$m")
+        fi
+        enabled=("${new_enabled[@]}")
+        ;;
+      ENTER)
+        local new_modules="${enabled[*]}"
+        if ! _save_config_modules "$new_modules"; then
+          press_any_key 5
+          return
+        fi
+        clear_screen
+        section_header "${BCYN}crisp config${RST} — saved"
+        _draw_divider
+        echo
+        status_ok "Configuration saved: ${#enabled[@]} modules active"
+        echo
+        press_any_key 5
+        return
+        ;;
+      QUIT | ESC)
+        return
+        ;;
+    esac
+  done
+}
+
+# ─────────────────────────────────────────────────
 # Menu dispatch
 # ─────────────────────────────────────────────────
 _dispatch_menu() {
@@ -226,7 +396,10 @@ _dispatch_menu() {
       hide_cursor
       ;;
     cron) _menu_cron_schedule ;;
-    config) _show_config_screen ;;
+    orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_orphans_menu "" ;;
+    radar) source "$CRISP_DIR/lib/modules/radar.sh" && _crisp_run_radar ;;
+    ai-health) source "$CRISP_DIR/lib/modules/ai-health.sh" && _crisp_ai_health ;;
+    config) _show_config_picker ;;
     help) _show_help_screen ;;
     *) echo -e "${RED}Unknown action: ${id}${RST}" ;;
   esac
@@ -438,6 +611,15 @@ _usage() {
   echo -e "    crisp list                list available modules"
   echo -e "    crisp update              self-update crisp"
   echo -e "    crisp setup-path          add crisp to PATH"
+  echo -e "    crisp scan-orphans        detect orphan binaries"
+  echo -e "    crisp check-orphans       compare orphan versions"
+  echo -e "    crisp update-orphans      update behind orphans"
+  echo -e "    crisp list-orphans        list tracked orphans"
+  echo -e "    crisp uninstall <name>    remove orphan from tracking"
+  echo -e "    crisp rollback [--list|<name>]  restore backed-up binary versions"
+  echo -e "    crisp clean-backups [--all]   remove old backups"
+  echo -e "    crisp ai-health            AI toolkit health report"
+  echo -e "    crisp radar                deprecation radar scan"
   echo -e "    crisp --dry-run           preview without changes"
   echo -e "    crisp --help              show this message"
   echo -e "    crisp --version           show version"
@@ -586,7 +768,7 @@ main() {
   for arg in "$@"; do
     case "$arg" in
       --dry-run) dry_run=true ;;
-      *) cmd="$arg" ;;
+      *) [[ -z "$cmd" ]] && cmd="$arg" ;;
     esac
   done
 
@@ -615,8 +797,17 @@ main() {
     all) _run_all_modules ;;
     quick) _run_quick_update ;;
     cron) _menu_cron_schedule ;;
+    config) _show_config_picker ;;
     update) _crisp_update ;;
     setup-path) _crisp_setup_path ;;
+    scan-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_scan_orphans ;;
+    check-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_check_orphans ;;
+    update-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_update_orphans ;;
+    list-orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_list_orphans ;;
+    uninstall) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_uninstall "$@" ;;
+    orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_orphans_menu "$2" ;;
+    radar) source "$CRISP_DIR/lib/modules/radar.sh" && _crisp_run_radar ;;
+    ai-health) source "$CRISP_DIR/lib/modules/ai-health.sh" && _crisp_ai_health ;;
     "") _interactive_menu ;;
     *)
       echo -e "${BOLD}[${cmd}]${RST}"
