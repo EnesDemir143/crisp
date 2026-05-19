@@ -71,6 +71,9 @@ MENU_ITEMS=(
   "quick:Quick Update (brew/pip/npm):Update core package managers only"
   "repos:Local Repo Status:Check git status of local repositories"
   "cron:Schedule Auto-Update:Schedule recurring auto-updates"
+  "orphans:Orphan Manager:Detect and update standalone binaries"
+  "radar:Deprecation Radar:Find abandoned repositories"
+  "ai-health:AI Health Check:ML tools, GPU, CUDA compatibility"
   "config:Configure Modules:Choose which modules to run"
   "help:Help & About:Help and version info"
 )
@@ -142,6 +145,10 @@ _show_help_screen() {
   echo -e "    ${CYN}crisp update-orphans${RST}     update behind orphans"
   echo -e "    ${CYN}crisp list-orphans${RST}       list tracked orphans"
   echo -e "    ${CYN}crisp uninstall <n>${RST}      remove orphan from tracking"
+  echo -e "    ${CYN}crisp rollback [--list|<name>]${RST}  restore backed-up binary versions"
+  echo -e "    ${CYN}crisp clean-backups [--all]${RST}   remove old backups"
+  echo -e "    ${CYN}crisp ai-health${RST}            AI toolkit health report"
+  echo -e "    ${CYN}crisp radar${RST}                deprecation radar scan"
   echo -e "    ${CYN}crisp --dry-run${RST}           preview without changes"
   section_header "KEYBOARD SHORTCUTS"
   echo -e "    ${CYN}↑/↓ or j/k${RST}    navigate menu"
@@ -342,6 +349,9 @@ _dispatch_menu() {
       hide_cursor
       ;;
     cron) _menu_cron_schedule ;;
+    orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_orphans_menu "" ;;
+    radar) source "$CRISP_DIR/lib/modules/radar.sh" && _crisp_run_radar ;;
+    ai-health) source "$CRISP_DIR/lib/modules/ai-health.sh" && _crisp_ai_health ;;
     config) _show_config_picker ;;
     help) _show_help_screen ;;
     *) echo -e "${RED}Unknown action: ${id}${RST}" ;;
@@ -559,6 +569,10 @@ _usage() {
   echo -e "    crisp update-orphans      update behind orphans"
   echo -e "    crisp list-orphans        list tracked orphans"
   echo -e "    crisp uninstall <name>    remove orphan from tracking"
+  echo -e "    crisp rollback [--list|<name>]  restore backed-up binary versions"
+  echo -e "    crisp clean-backups [--all]   remove old backups"
+  echo -e "    crisp ai-health            AI toolkit health report"
+  echo -e "    crisp radar                deprecation radar scan"
   echo -e "    crisp --dry-run           preview without changes"
   echo -e "    crisp --help              show this message"
   echo -e "    crisp --version           show version"
