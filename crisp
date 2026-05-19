@@ -308,13 +308,10 @@ _show_config_picker() {
   local -a new_enabled
   local -i i
 
-  clear_screen
   hide_cursor
 
   while true; do
-    cursor_home
-    _draw_header
-    _draw_divider
+    clear_screen
     section_header "${BCYN}crisp config${RST} — interactive module picker"
     _draw_divider
     echo
@@ -343,7 +340,6 @@ _show_config_picker() {
     _draw_divider
     printf '\r\033[2K'
     echo -e "  ${DIM}↑/↓: navigate  •  Space: toggle  •  Enter: save  •  q: cancel${RST}"
-    clear_to_end
 
     local key
     key="$(read_key)"
@@ -400,6 +396,8 @@ _dispatch_menu() {
       show_cursor
       _run_module "repos"
       hide_cursor
+      echo
+      press_any_key 5
       ;;
     cron) _menu_cron_schedule ;;
     orphans) source "$CRISP_DIR/lib/modules/orphans.sh" && _crisp_orphans_menu "" ;;
