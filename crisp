@@ -229,22 +229,66 @@ _show_config_screen() {
 # ─────────────────────────────────────────────────
 _save_config_modules() {
   local new_modules="$1"
+
+  # Validation: at least 1 module enabled
+  if [[ -z "${new_modules// /}" ]]; then
+    echo -e "  ${RED}${ICO_ERR} Error: at least one module must be enabled${RST}" >&2
+    return 1
+  fi
+
+  # Validation: every module must have a corresponding file
+  local m
+  for m in $new_modules; do
+    if [[ ! -f "$CRISP_MODULES_DIR/$m.sh" ]]; then
+      echo -e "  ${RED}${ICO_ERR} Error: module '${m}' has no file in lib/modules/${RST}" >&2
+      return 1
+    fi
+  done
+
   local dir
   dir="$(dirname "$CRISP_CONF")"
   mkdir -p "$dir" 2>/dev/null
+
+  # Check writability
+  if [[ ! -d "$dir" ]] || [[ ! -w "$dir" ]]; then
+    echo -e "  ${RED}${ICO_ERR} Error: config directory '${dir}' is not writable${RST}" >&2
+    return 1
+  fi
+
+  # Timestamped backup if config exists
+  if [[ -f "$CRISP_CONF" ]]; then
+    local backup="${CRISP_CONF}.bak.$(date +%Y%m%d%H%M%S)"
+    cp "$CRISP_CONF" "$backup" || {
+      echo -e "  ${RED}${ICO_ERR} Error: failed to create backup${RST}" >&2
+      return 1
+    }
+  fi
+
+  # Atomic write: temp file first, then mv
+  local tmp
+  tmp="$(mktemp "${CRISP_CONF}.tmp.XXXXXX")"
+
   if [[ -f "$CRISP_CONF" ]]; then
     if grep -q "^CRISP_MODULES=" "$CRISP_CONF" 2>/dev/null; then
       if [[ "$CRISP_OS" == "macos" ]]; then
-        sed -i '' "s/^CRISP_MODULES=.*/CRISP_MODULES=\"${new_modules}\"/" "$CRISP_CONF"
+        sed "s/^CRISP_MODULES=.*/CRISP_MODULES=\"${new_modules}\"/" "$CRISP_CONF" >"$tmp"
       else
-        sed -i "s/^CRISP_MODULES=.*/CRISP_MODULES=\"${new_modules}\"/" "$CRISP_CONF"
+        sed "s/^CRISP_MODULES=.*/CRISP_MODULES=\"${new_modules}\"/" "$CRISP_CONF" >"$tmp"
       fi
     else
-      echo "CRISP_MODULES=\"${new_modules}\"" >>"$CRISP_CONF"
+      cp "$CRISP_CONF" "$tmp"
+      echo "CRISP_MODULES=\"${new_modules}\"" >>"$tmp"
     fi
   else
-    echo "CRISP_MODULES=\"${new_modules}\"" >"$CRISP_CONF"
+    echo "CRISP_MODULES=\"${new_modules}\"" >"$tmp"
   fi
+
+  mv "$tmp" "$CRISP_CONF" || {
+    echo -e "  ${RED}${ICO_ERR} Error: failed to write config${RST}" >&2
+    rm -f "$tmp"
+    return 1
+  }
+
   CRISP_MODULES="$new_modules"
 }
 
@@ -318,7 +362,10 @@ _show_config_picker() {
         ;;
       ENTER)
         local new_modules="${enabled[*]}"
-        _save_config_modules "$new_modules"
+        if ! _save_config_modules "$new_modules"; then
+          press_any_key 5
+          return
+        fi
         clear_screen
         section_header "${BCYN}crisp config${RST} — saved"
         _draw_divider

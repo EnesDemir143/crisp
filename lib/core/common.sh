@@ -8,6 +8,11 @@ readonly CRISP_COMMON_LOADED=1
 [[ -z "${CRISP_BASE_LOADED:-}" ]] && source "$(dirname "${BASH_SOURCE[0]}")/base.sh"
 [[ -z "${CRISP_UI_LOADED:-}" ]] && source "$(dirname "${BASH_SOURCE[0]}")/ui.sh"
 
+# GitHub sources for release notes digest
+declare -A CRISP_MODULE_SOURCES
+CRISP_MODULE_SOURCES["graphify"]="nousbuilds/graphify"
+CRISP_MODULE_SOURCES["hermes"]="nousresearch/hermes-agent"
+
 # ─────────────────────────────────────────────────
 # Module discovery & metadata
 # ─────────────────────────────────────────────────
@@ -56,6 +61,73 @@ _all_available_modules() {
 }
 
 # ─────────────────────────────────────────────────
+# T9-T11: Release notes digest
+# ─────────────────────────────────────────────────
+
+_fetch_release_notes() {
+  local owner="$1" repo="$2"
+  local json
+  if command -v gh &>/dev/null; then
+    json="$(gh api "repos/$owner/$repo/releases/latest" 2>/dev/null)" || return 1
+  else
+    json="$(curl -sf "https://api.github.com/repos/$owner/$repo/releases/latest" 2>/dev/null)" || return 1
+  fi
+  local tag body
+  tag="$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)"
+  body="$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('body',''))" 2>/dev/null)"
+  [[ -z "$tag" ]] && return 1
+  echo "$tag"
+  echo "$body"
+}
+
+_classify_changes() {
+  local body="$1"
+  local line trimmed
+  printf '%s\n' "$body" | while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    trimmed="${line#"${line%%[![:space:]]*}"}"
+    trimmed="${trimmed#- }"
+    trimmed="${trimmed#\* }"
+    [[ -z "$trimmed" ]] && continue
+    if echo "$trimmed" | grep -qiE '\b(cve|security|vulnerability|patch|exploit)\b'; then
+      echo "🔒 Security: $trimmed"
+    elif echo "$trimmed" | grep -qiE '\b(breaking|deprecated|removed|migration)\b'; then
+      echo "⚠ Breaking: $trimmed"
+    elif echo "$trimmed" | grep -qiE '\b(feat|add|new|support|introduce)\b'; then
+      echo "✨ Feature: $trimmed"
+    elif echo "$trimmed" | grep -qiE '\b(fix|bug|crash|issue|resolve)\b'; then
+      echo "🐛 Fix: $trimmed"
+    fi
+  done
+}
+
+_show_release_digest() {
+  local name="$1"
+  local source="${CRISP_MODULE_SOURCES[$name]:-}"
+  [[ -z "$source" ]] && return 0
+
+  local owner="${source%%/*}" repo="${source##*/}"
+  local release_output tag body classified
+  if ! release_output="$(_fetch_release_notes "$owner" "$repo" 2>/dev/null)"; then
+    return 0
+  fi
+
+  tag="$(echo "$release_output" | head -1)"
+  body="$(echo "$release_output" | tail -n +2)"
+  [[ -z "$tag" ]] && return 0
+
+  classified="$(_classify_changes "$body" 2>/dev/null | head -5)"
+  if [[ -z "$classified" ]]; then
+    echo -e "  ${BOLD}${ICO_ARROW_UP} ${name} → ${CYN}${tag}${RST}"
+  else
+    echo -e "  ${BOLD}${ICO_ARROW_UP} ${name} → ${CYN}${tag}${RST}"
+    printf '%s\n' "$classified" | while IFS= read -r line; do
+      echo -e "   ${line}"
+    done
+  fi
+}
+
+# ─────────────────────────────────────────────────
 # Module execution
 # ─────────────────────────────────────────────────
 
@@ -77,6 +149,11 @@ _run_module() {
     desc="$(_module_desc "$name")"
     echo -e "  ${CYN}[${name}]${RST} ${DIM}→ would run: ${desc}${RST}"
     return 0
+  fi
+
+  # Show release digest if module has a GitHub source
+  if [[ "$silent" != "true" ]]; then
+    _show_release_digest "$name"
   fi
 
   # Source the module (guards prevent double-loading)
