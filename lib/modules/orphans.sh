@@ -128,9 +128,17 @@ _orphans_compare_versions() {
 
 # Check if binary is managed by a package manager
 _orphans_is_package_managed() {
-  local name="$1"
+  local name="$1" path="${2:-}"
 
-  command -v brew &>/dev/null && brew list --formula "$name" &>/dev/null 2>&1 && return 0
+  # Brew: check if path is inside brew prefix or formula name matches
+  if command -v brew &>/dev/null; then
+    if [[ -n "$path" ]]; then
+      local brew_prefix
+      brew_prefix="$(brew --prefix 2>/dev/null)"
+      [[ -n "$brew_prefix" && "$path" == "$brew_prefix"/* ]] && return 0
+    fi
+    brew list --formula "$name" &>/dev/null 2>&1 && return 0
+  fi
   command -v cargo &>/dev/null && cargo install --list 2>/dev/null | grep -q "^${name} " && return 0
   command -v npm &>/dev/null && npm list -g "$name" &>/dev/null 2>&1 && return 0
   if command -v pip3 &>/dev/null; then
@@ -213,14 +221,21 @@ _crisp_scan_orphans() {
       [[ -f "$binary" && -x "$binary" ]] || continue
       name="$(basename "$binary")"
 
-      if _orphans_is_package_managed "$name"; then
+      if _orphans_is_package_managed "$name" "$binary"; then
         skipped=$((skipped + 1))
         continue
       fi
 
+      local repos repo
+      repos="$(_orphans_find_github_repos "$binary")"
+      [[ -z "$repos" ]] && {
+        missing=$((missing + 1))
+        continue
+      }
+
       echo "    → ${name} (not package-managed)"
 
-      local repos repo release tag ver
+      local release tag ver success=false
       while IFS= read -r repo; do
         [[ -z "$repo" ]] && continue
         release="$(_orphans_get_latest_release "$repo")" || continue
@@ -235,13 +250,14 @@ _crisp_scan_orphans() {
         _orphans_set_entry "$name" "$local_ver" "$repo" "strings" "$binary"
         echo "      ✓ recorded ${name} v${local_ver} (from ${repo})"
         found=$((found + 1))
+        success=true
         break
-      done < <(_orphans_find_github_repos "$binary")
+      done <<<"$repos"
 
-      if [[ -z "${repo:-}" ]]; then
-        echo "      ⚠ no GitHub source found"
+      [[ "$success" != "true" ]] && {
+        echo "      ⚠ no valid release found"
         missing=$((missing + 1))
-      fi
+      }
     done
   done
 
@@ -505,8 +521,77 @@ _crisp_uninstall() {
 # ─────────────────────────────────────────────────
 # T5: Orphans submenu (--prune)
 # ─────────────────────────────────────────────────
+# ─────────────────────────────────────────────────
+# T5: Orphans submenu
+# ─────────────────────────────────────────────────
+_orphans_execute_action() {
+  case "$1" in
+    scan)
+      clear_screen
+      _crisp_scan_orphans
+      echo
+      press_any_key 5
+      ;;
+    check)
+      clear_screen
+      _crisp_check_orphans
+      echo
+      press_any_key 5
+      ;;
+    update)
+      clear_screen
+      _crisp_update_orphans
+      echo
+      press_any_key 5
+      ;;
+    list)
+      clear_screen
+      _crisp_list_orphans
+      echo
+      press_any_key 5
+      ;;
+    uninstall)
+      clear_screen
+      section_header "${BCYN}orphans uninstall${RST}"
+      _draw_divider
+      echo
+      printf "  Enter binary name to remove: "
+      read -r target
+      if [[ -n "$target" ]]; then
+        _crisp_uninstall "" "$target"
+      else
+        echo "  ⚠ cancelled"
+      fi
+      echo
+      press_any_key 5
+      ;;
+    prune)
+      clear_screen
+      local inv entries pruned=0
+      inv="$(_orphans_load_inventory)"
+      entries="$(echo "$inv" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+for name, info in d.get('binaries',{}).items():
+    print(f'{name}|{info.get(\"binary_path\",\"?\")}')
+" 2>/dev/null)"
+      while IFS='|' read -r name path; do
+        [[ -z "$name" ]] && continue
+        if [[ ! -f "$path" ]]; then
+          _orphans_remove_entry "$name"
+          pruned=$((pruned + 1))
+        fi
+      done <<<"$entries"
+      echo "  ✓ Pruned ${pruned} stale inventory entries"
+      echo
+      press_any_key 5
+      ;;
+  esac
+}
+
 _crisp_orphans_menu() {
   local sub="$1"
+  clear_screen
 
   case "$sub" in
     --prune)
@@ -530,14 +615,69 @@ for name, info in d.get('binaries',{}).items():
       echo "  ✓ Pruned ${pruned} stale inventory entries"
       ;;
     *)
-      _crisp_list_orphans
-      echo
-      echo "  ${DIM}crisp scan-orphans   — full detection scan${RST}"
-      echo "  ${DIM}crisp check-orphans  — compare versions${RST}"
-      echo "  ${DIM}crisp update-orphans — batch update behind binaries${RST}"
-      echo "  ${DIM}crisp list-orphans   — list tracked binaries${RST}"
-      echo "  ${DIM}crisp uninstall <n>  — remove binary from tracking${RST}"
-      echo "  ${DIM}crisp orphans --prune — clean stale entries${RST}"
+      local ORPHAN_ITEMS=(
+        "scan:Scan for Orphans:Detect binaries not managed by package managers"
+        "check:Check Versions:Compare local vs latest release versions"
+        "update:Update Behind:Download and install newer versions"
+        "list:List Tracked:Show all tracked orphan binaries"
+        "uninstall:Uninstall:Remove a binary from tracking"
+        "prune:Prune Stale:Clean entries with missing binary files"
+      )
+      local sel=0 n="${#ORPHAN_ITEMS[@]}"
+      while true; do
+        clear_screen
+        _crisp_list_orphans
+        echo
+        _draw_divider
+        section_header "${BCYN}orphans${RST} — select action"
+        echo
+        for ((i = 0; i < n; i++)); do
+          local item="${ORPHAN_ITEMS[$i]}"
+          local num=$((i + 1))
+          local title desc
+          title="$(echo "$item" | cut -d: -f2)"
+          desc="$(echo "$item" | cut -d: -f3)"
+          if [[ $i -eq $sel ]]; then
+            printf '\r\033[2K'
+            echo -e "  ${BCYN}${ICO_ARROW} ${num}. ${title}${RST}"
+            printf '\r\033[2K'
+            echo -e "     ${DIM}${desc}${RST}"
+          else
+            printf '\r\033[2K'
+            echo -e "  ${DIM}  ${num}.${RST} ${title}"
+            printf '\r\033[2K'
+            echo -e "     ${DIM}${desc}${RST}"
+          fi
+        done
+        echo
+        _draw_divider
+        printf '\r\033[2K'
+        echo -e "  ${DIM}↑/↓: navigate  •  Enter: select  •  1-${n}: quick select  •  q: back${RST}"
+        clear_to_end
+
+        local key
+        key="$(read_key)"
+        case "$key" in
+          UP) sel=$(((sel - 1 + n) % n)) ;;
+          DOWN) sel=$(((sel + 1) % n)) ;;
+          ENTER)
+            local id
+            id="$(echo "${ORPHAN_ITEMS[$sel]}" | cut -d: -f1)"
+            _orphans_execute_action "$id"
+            return
+            ;;
+          NUM:*)
+            local num="${key#NUM:}"
+            if [[ "$num" -ge 1 ]] && [[ "$num" -le "$n" ]]; then
+              local id
+              id="$(echo "${ORPHAN_ITEMS[$((num - 1))]}" | cut -d: -f1)"
+              _orphans_execute_action "$id"
+              return
+            fi
+            ;;
+          QUIT | ESC) return ;;
+        esac
+      done
       ;;
   esac
 }
